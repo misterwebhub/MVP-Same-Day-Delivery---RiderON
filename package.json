@@ -1,0 +1,12 @@
+{
+  "name": "rideron",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "customer": "npm run start --workspace=apps/customer",
+    "customer:web": "npm run web --workspace=apps/customer"
+  }
+}
