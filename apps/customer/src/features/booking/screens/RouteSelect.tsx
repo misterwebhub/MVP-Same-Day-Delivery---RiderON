@@ -1,126 +1,67 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { City, RouteSummary, Station } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
-import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
-import { Chip } from '../../../components/Chip';
+import { Card } from '../../../components/Card';
+import { Icon } from '../../../components/Icon';
 import { StepProgress } from '../../../components/StepProgress';
 import { formatPaise } from '../../../utils/currency';
 import { useBookingDraft } from '../BookingDraftContext';
+import { useAllStations } from '../hooks/useAllStations';
+import { useRouteResolution } from '../hooks/useRouteResolution';
+import { RouteFieldsCard } from '../components/RouteFieldsCard';
+import { RoutePreviewCard } from '../components/RoutePreviewCard';
 import type { BookingStackParamList } from '../../../navigation/types';
 
 type Props = NativeStackScreenProps<BookingStackParamList, 'RouteSelect'>;
 
-interface StationOption extends Station {
-  city: City;
-}
-
-/** Flat, single-tap station list — no city intermediate step. All stations across
- * every served city are loaded once and shown directly, per the "no multi-level
- * picker, finish booking fast" requirement. */
-function useAllStations() {
-  const [stations, setStations] = useState<StationOption[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiClient.catalog
-      .listCities()
-      .then(async (cities) => {
-        const perCity = await Promise.all(
-          cities.map((city) => apiClient.catalog.listStations(city.id).then((list) => list.map((s) => ({ ...s, city })))),
-        );
-        if (!cancelled) setStations(perCity.flat());
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { stations, loading };
-}
-
-function StationPicker({
-  label,
-  stations,
-  loading,
-  selectedStation,
-  onSelectStation,
-}: {
-  label: string;
-  stations: StationOption[];
-  loading: boolean;
-  selectedStation: Station | null;
-  onSelectStation: (station: StationOption) => void;
-}) {
-  return (
-    <View style={styles.pickerSection}>
-      <Text style={styles.pickerLabel}>{label}</Text>
-      {loading ? <ActivityIndicator style={styles.stationLoader} color={color.primary} /> : null}
-      {!loading ? (
-        <View style={styles.chipRow}>
-          {stations.map((station) => (
-            <Chip
-              key={station.id}
-              label={station.name}
-              selected={selectedStation?.id === station.id}
-              onPress={() => onSelectStation(station)}
-            />
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-/** Origin/destination city+station pickers -> resolves to a RouteSummary, per docs/01's "Home -> pick From/To -> Continue" journey step. */
+/** Origin/destination station pickers -> resolves to a RouteSummary, per docs/01's
+ * "Home -> pick From/To -> Continue" journey step. Redesigned around a compact
+ * From/To card with a searchable station sheet (RouteFieldsCard) plus one-tap
+ * popular-route suggestions, replacing the old long scrollable chip grid. */
 export function RouteSelect({ navigation }: Props) {
   const { draft, update } = useBookingDraft();
-  const { stations: allStations, loading: loadingStations } = useAllStations();
-  const [originCity, setOriginCity] = useState<City | null>(draft.originCity);
+  const { stations: allStations } = useAllStations();
   const [originStation, setOriginStation] = useState<Station | null>(draft.originStation);
-  const [destinationCity, setDestinationCity] = useState<City | null>(draft.destinationCity);
+  const [originCity, setOriginCity] = useState<City | null>(draft.originCity);
   const [destinationStation, setDestinationStation] = useState<Station | null>(draft.destinationStation);
-  const [route, setRoute] = useState<RouteSummary | null>(draft.route);
-  const [resolving, setResolving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [destinationCity, setDestinationCity] = useState<City | null>(draft.destinationCity);
+  const [popularRoutes, setPopularRoutes] = useState<RouteSummary[]>([]);
+
+  const { route, resolving, error } = useRouteResolution(originStation, destinationStation);
 
   useEffect(() => {
-    setRoute(null);
-    setError(null);
-    if (!originStation || !destinationStation) return;
-    if (originStation.id === destinationStation.id) {
-      setError('Pickup and drop-off stations must be different.');
-      return;
-    }
-    let cancelled = false;
-    setResolving(true);
     apiClient.catalog
-      .findRoute({ origin_station_id: originStation.id, destination_station_id: destinationStation.id })
-      .then((foundRoute) => {
-        if (!cancelled) setRoute(foundRoute);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        if (e instanceof ApiClientError && e.status === 404) {
-          setError('No direct route runs between these stations yet.');
-        } else {
-          setError(e instanceof ApiClientError ? e.message : 'Could not load routes.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setResolving(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [originStation, destinationStation]);
+      .getPopularRoutes()
+      .then(setPopularRoutes)
+      .catch(() => setPopularRoutes([]));
+  }, []);
+
+  /** Popular-route suggestions only carry station ids (no nested city), so
+   * resolve each side against the already-loaded full station list to get
+   * a City for the draft — falls back to the bare station if the station
+   * list hasn't finished loading yet. */
+  const applyRoute = (r: RouteSummary) => {
+    if (!r.origin_station || !r.destination_station) return;
+    const originMatch = allStations.find((s) => s.id === r.origin_station!.id);
+    const destinationMatch = allStations.find((s) => s.id === r.destination_station!.id);
+    setOriginStation(originMatch ?? r.origin_station);
+    setOriginCity(originMatch?.city ?? null);
+    setDestinationStation(destinationMatch ?? r.destination_station);
+    setDestinationCity(destinationMatch?.city ?? null);
+  };
+
+  const onSwap = () => {
+    const os = originStation;
+    const oc = originCity;
+    setOriginStation(destinationStation);
+    setOriginCity(destinationCity);
+    setDestinationStation(os);
+    setDestinationCity(oc);
+  };
 
   const onContinue = () => {
     if (!route || !originCity || !originStation || !destinationCity || !destinationStation) return;
@@ -131,42 +72,49 @@ export function RouteSelect({ navigation }: Props) {
   return (
     <View style={styles.container}>
       <StepProgress current={1} total={6} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <StationPicker
-          label="From"
-          stations={allStations}
-          loading={loadingStations}
-          selectedStation={originStation}
-          onSelectStation={(station) => {
-            setOriginStation(station);
-            setOriginCity(station.city);
-          }}
-        />
-        <StationPicker
-          label="To"
-          stations={allStations}
-          loading={loadingStations}
-          selectedStation={destinationStation}
-          onSelectStation={(station) => {
-            setDestinationStation(station);
-            setDestinationCity(station.city);
-          }}
-        />
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Text style={styles.heading}>Where's it going?</Text>
+        <Text style={styles.subheading}>Pick a pickup and a drop-off station — we'll find your route.</Text>
 
-        {resolving ? <ActivityIndicator color={color.primary} style={styles.routeLoader} /> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Card style={styles.fieldsCard}>
+          <RouteFieldsCard
+            originStation={originStation}
+            destinationStation={destinationStation}
+            onSelectOrigin={(station) => {
+              setOriginStation(station);
+              setOriginCity(station.city);
+            }}
+            onSelectDestination={(station) => {
+              setDestinationStation(station);
+              setDestinationCity(station.city);
+            }}
+            onSwap={onSwap}
+          />
+          <RoutePreviewCard route={route} resolving={resolving} error={error} />
+        </Card>
 
-        {route ? (
-          <View style={styles.routeCard}>
-            <Text style={styles.routeCardTitle}>
-              {originStation?.name} → {destinationStation?.name}
-            </Text>
-            <View style={styles.routeCardRow}>
-              <Text style={styles.routeCardMeta}>{route.distance_km} km</Text>
-              <Text style={styles.routeCardMeta}>~{route.estimated_duration_minutes} min</Text>
-              <Text style={styles.routeCardMeta}>Cutoff {route.cutoff_time}</Text>
-            </View>
-            <Text style={styles.routeCardPrice}>from {formatPaise(route.price_from)}</Text>
+        {popularRoutes.length > 0 ? (
+          <View style={styles.suggestions}>
+            <Text style={styles.suggestionsTitle}>Popular routes</Text>
+            {popularRoutes.slice(0, 5).map((r) => {
+              const active = originStation?.id === r.origin_station?.id && destinationStation?.id === r.destination_station?.id;
+              return (
+                <TouchableOpacity
+                  key={r.id}
+                  style={[styles.suggestionRow, active && styles.suggestionRowActive]}
+                  activeOpacity={0.8}
+                  onPress={() => applyRoute(r)}
+                >
+                  <View style={styles.suggestionIcon}>
+                    <Icon name="train-outline" size={16} color={color.primary} />
+                  </View>
+                  <Text style={styles.suggestionText} numberOfLines={1}>
+                    {r.origin_station?.name ?? '—'} → {r.destination_station?.name ?? '—'}
+                  </Text>
+                  <Text style={styles.suggestionPrice}>from {formatPaise(r.price_from)}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         ) : null}
       </ScrollView>
@@ -183,57 +131,62 @@ const styles = StyleSheet.create({
     backgroundColor: color.background,
   },
   content: {
-    padding: space[6],
+    padding: space[5],
     paddingBottom: space[8],
   },
-  pickerSection: {
-    marginBottom: space[6],
+  heading: {
+    ...typography.h1,
+    color: color.textPrimary,
+    marginBottom: space[1],
   },
-  pickerLabel: {
+  subheading: {
+    ...typography.body,
+    color: color.textSecondary,
+    marginBottom: space[5],
+  },
+  fieldsCard: {
+    marginBottom: space[5],
+  },
+  suggestions: {
+    marginTop: space[1],
+  },
+  suggestionsTitle: {
     ...typography.h2,
     color: color.textPrimary,
     marginBottom: space[3],
   },
-  chipRow: {
+  suggestionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  stationLoader: {
-    marginTop: space[2],
-  },
-  routeLoader: {
-    marginTop: space[2],
-  },
-  error: {
-    ...typography.caption,
-    color: color.error,
-    marginTop: space[2],
-  },
-  routeCard: {
+    alignItems: 'center',
+    gap: space[3],
     backgroundColor: color.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: color.border,
-    padding: space[4],
-    marginTop: space[4],
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+    marginBottom: space[2],
   },
-  routeCardTitle: {
-    ...typography.bodyStrong,
+  suggestionRowActive: {
+    borderColor: color.primary,
+    backgroundColor: color.primaryTint,
+  },
+  suggestionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.pill,
+    backgroundColor: color.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionText: {
+    ...typography.body,
     color: color.textPrimary,
-    marginBottom: space[2],
+    flex: 1,
   },
-  routeCardRow: {
-    flexDirection: 'row',
-    gap: space[4],
-    marginBottom: space[2],
-  },
-  routeCardMeta: {
+  suggestionPrice: {
     ...typography.caption,
     color: color.textSecondary,
-  },
-  routeCardPrice: {
-    ...typography.bodyStrong,
-    color: color.primary,
   },
   footer: {
     padding: space[6],

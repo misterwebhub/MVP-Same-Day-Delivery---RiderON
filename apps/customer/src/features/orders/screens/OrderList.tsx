@@ -7,7 +7,14 @@ import { color, radius, space, statusBadgeColor, typography } from '@rideron/des
 import type { Order, OrderStatus } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { formatPaise } from '../../../utils/currency';
+import { formatDateLabel } from '../../../utils/date';
+import { TextField } from '../../../components/TextField';
 import type { AppTabsParamList, RootStackParamList } from '../../../navigation/types';
+
+/** "19:00:00" -> "19:00" — schedule times come back with seconds, trimmed for display. */
+function formatTime(hms: string): string {
+  return hms.slice(0, 5);
+}
 
 type Props = CompositeScreenProps<BottomTabScreenProps<AppTabsParamList, 'Orders'>, NativeStackScreenProps<RootStackParamList>>;
 
@@ -37,6 +44,7 @@ export function OrderList({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('active');
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -61,10 +69,20 @@ export function OrderList({ navigation }: Props) {
 
   const goToOrder = (orderId: number) => navigation.getParent()?.navigate('OrderDetails', { orderId });
 
-  const filtered = (orders ?? []).filter((o) => matchesTab(o.status, tab));
+  /** Trimmed, case-insensitive substring match against the booking reference
+   * (e.g. "RID-TT-PH8U9H") — client-side over the already-fetched page,
+   * same as the tab split above, so no new API call is needed just to search. */
+  const query = search.trim().toUpperCase();
+  const filtered = (orders ?? [])
+    .filter((o) => matchesTab(o.status, tab))
+    .filter((o) => query.length === 0 || o.booking_reference.toUpperCase().includes(query));
 
   return (
     <View style={styles.container}>
+      <View style={styles.searchRow}>
+        <TextField value={search} onChangeText={setSearch} placeholder="Search by order ID" />
+      </View>
+
       <View style={styles.tabRow}>
         {TABS.map((t) => (
           <TouchableOpacity key={t.key} style={[styles.tab, tab === t.key && styles.tabActive]} onPress={() => setTab(t.key)} activeOpacity={0.8}>
@@ -81,7 +99,9 @@ export function OrderList({ navigation }: Props) {
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>{error ?? `No ${tab} orders yet.`}</Text>
+              <Text style={styles.emptyText}>
+                {error ?? (query.length > 0 ? `No orders match "${search.trim()}".` : `No ${tab} orders yet.`)}
+              </Text>
             </View>
           ) : null
         }
@@ -92,6 +112,10 @@ export function OrderList({ navigation }: Props) {
               <Text style={styles.rowRef}>{item.booking_reference}</Text>
               <Text style={styles.rowRoute} numberOfLines={1}>
                 {item.route?.origin_station?.name ?? '—'} → {item.route?.destination_station?.name ?? '—'}
+              </Text>
+              <Text style={styles.rowMeta} numberOfLines={1}>
+                {item.booking_date ? formatDateLabel(item.booking_date) : '—'}
+                {item.route_schedule ? ` • ${formatTime(item.route_schedule.departure_time)}` : ''}
               </Text>
               <Text style={styles.rowStatus}>{item.status.replace(/_/g, ' ')}</Text>
             </View>
@@ -108,10 +132,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: color.background,
   },
+  searchRow: {
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+    paddingBottom: space[2],
+  },
   tabRow: {
     flexDirection: 'row',
     paddingHorizontal: space[6],
-    paddingTop: space[6],
+    paddingTop: space[2],
     paddingBottom: space[2],
   },
   tab: {
@@ -166,6 +195,11 @@ const styles = StyleSheet.create({
     color: color.textPrimary,
   },
   rowRoute: {
+    ...typography.caption,
+    color: color.textSecondary,
+    marginTop: 2,
+  },
+  rowMeta: {
     ...typography.caption,
     color: color.textSecondary,
     marginTop: 2,

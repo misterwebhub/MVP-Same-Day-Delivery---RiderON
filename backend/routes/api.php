@@ -75,9 +75,6 @@ Route::prefix('v1')->group(function () {
         Route::post('payments/{payment}/verify', [PaymentController::class, 'verify'])->middleware('idempotent');
         Route::get('payments/{payment}/status', [PaymentController::class, 'status']);
 
-        Route::post('orders/{order}/otp/{purpose}/resend', [OrderOtpController::class, 'resend'])
-            ->whereIn('purpose', ['pickup', 'delivery']);
-
         Route::post('orders/{order}/parcel/photos', [ParcelPhotoController::class, 'store']);
 
         Route::middleware('role:partner')->group(function () {
@@ -91,6 +88,7 @@ Route::prefix('v1')->group(function () {
 
             Route::prefix('partner/assignments')->group(function () {
                 Route::get('/', [PartnerAssignmentController::class, 'index']);
+                Route::get('unassigned', [PartnerAssignmentController::class, 'unassigned']);
                 Route::get('{order}', [PartnerAssignmentController::class, 'show']);
                 Route::post('{order}/accept', [PartnerAssignmentController::class, 'accept'])->middleware('idempotent');
                 Route::post('{order}/arrived-pickup', [PartnerAssignmentController::class, 'arrivedPickup']);

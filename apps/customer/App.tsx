@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts, Poppins_500Medium, Poppins_600SemiBold } from '@expo-google-fonts/poppins';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { AuthProvider } from './src/hooks/useAuth';
+import { BookingDraftProvider } from './src/features/booking/BookingDraftContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -40,7 +41,9 @@ export default function App() {
   return (
     <SafeAreaProvider onLayout={onLayoutRootView}>
       <AuthProvider>
-        <RootNavigator />
+        <BookingDraftProvider>
+          <RootNavigator />
+        </BookingDraftProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

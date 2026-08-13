@@ -170,14 +170,6 @@ export interface PaymentStatusResponse {
   order_status: OrderStatus;
 }
 
-export interface ResendOrderOtpResponse {
-  /** Same "not available right now" semantics as OrderOtpField.code. */
-  code: string | null;
-  /** ISO 8601. */
-  expires_at: string;
-  resend_count: number;
-}
-
 export interface VerifyOrderOtpPayload {
   otp: string;
 }

@@ -21,7 +21,6 @@ import type {
   RegenerateOrderOtpResponse,
   RequestOtpPayload,
   RequestOtpResponse,
-  ResendOrderOtpResponse,
   RouteScheduleAvailability,
   RouteSummary,
   SavedContact,
@@ -154,9 +153,6 @@ export function createResources(http: HttpClient) {
           idempotencyKey: generateIdempotencyKey(),
         }),
 
-      resendOtp: (orderId: number, purpose: 'pickup' | 'delivery') =>
-        http.request<ResendOrderOtpResponse>(`/orders/${orderId}/otp/${purpose}/resend`, { method: 'POST' }),
-
       /** Customer-only — attaches a photo of the parcel to the order at booking time
        * (or any time before delivery), so the rider can visually confirm the physical
        * parcel matches what was declared. */
@@ -224,8 +220,16 @@ export function createResources(http: HttpClient) {
         list: (params?: { date?: string }) =>
           http.request<PartnerAssignment[]>('/partner/assignments', { query: params }),
 
+        /** "Unassigned Rides" pool — orders not yet matched to any partner
+         * (partner_id null), filtered server-side to ones this partner is
+         * eligible for. Accepting one claims it (see accept() below). */
+        listUnassigned: () => http.request<PartnerAssignment[]>('/partner/assignments/unassigned'),
+
         get: (orderId: number) => http.request<PartnerAssignment>(`/partner/assignments/${orderId}`),
 
+        /** Also doubles as "claim" for a still-unassigned order from the
+         * Unassigned Rides pool — the backend atomically assigns it to this
+         * partner first (if not already assigned) before accepting. */
         accept: (orderId: number) =>
           http.request<PartnerAssignment>(`/partner/assignments/${orderId}/accept`, {
             method: 'POST',

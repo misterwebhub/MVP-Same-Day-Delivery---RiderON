@@ -288,24 +288,28 @@ export function AssignmentDetail({ route }: Props) {
             ) : (
               <Button title="Capture pickup photo" variant="secondary" onPress={() => onCaptureProofPhoto('pickup')} loading={actionLoading} />
             )}
-            <View style={styles.spacer} />
-            <TextField
-              label="Pickup OTP"
-              value={otp}
-              onChangeText={setOtp}
-              placeholder="Enter 4-digit OTP"
-              keyboardType="number-pad"
-              maxLength={6}
-            />
-            <View style={styles.spacer} />
-            <Button
-              title="Verify pickup OTP"
-              onPress={() => onVerifyOtp('pickup')}
-              loading={actionLoading}
-              disabled={otp.length === 0 || !assignment.pickup_photo_uploaded}
-            />
-            <View style={styles.spacer} />
-            <Button title="Resend/regenerate pickup OTP" variant="secondary" onPress={() => onRegenerateOtp('pickup')} loading={actionLoading} />
+            {assignment.pickup_photo_uploaded ? (
+              <>
+                <View style={styles.spacer} />
+                <TextField
+                  label="Pickup OTP"
+                  value={otp}
+                  onChangeText={setOtp}
+                  placeholder="Enter 4-digit OTP"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <View style={styles.spacer} />
+                <Button
+                  title="Verify pickup OTP"
+                  onPress={() => onVerifyOtp('pickup')}
+                  loading={actionLoading}
+                  disabled={otp.length === 0}
+                />
+                <View style={styles.spacer} />
+                <Button title="Resend/regenerate pickup OTP" variant="secondary" onPress={() => onRegenerateOtp('pickup')} loading={actionLoading} />
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -332,24 +336,28 @@ export function AssignmentDetail({ route }: Props) {
             ) : (
               <Button title="Capture delivery photo" variant="secondary" onPress={() => onCaptureProofPhoto('delivery')} loading={actionLoading} />
             )}
-            <View style={styles.spacer} />
-            <TextField
-              label="Delivery OTP"
-              value={otp}
-              onChangeText={setOtp}
-              placeholder="Enter 4-digit OTP"
-              keyboardType="number-pad"
-              maxLength={6}
-            />
-            <View style={styles.spacer} />
-            <Button
-              title="Verify delivery OTP"
-              onPress={() => onVerifyOtp('delivery')}
-              loading={actionLoading}
-              disabled={otp.length === 0 || !assignment.delivery_photo_uploaded}
-            />
-            <View style={styles.spacer} />
-            <Button title="Resend/regenerate delivery OTP" variant="secondary" onPress={() => onRegenerateOtp('delivery')} loading={actionLoading} />
+            {assignment.delivery_photo_uploaded ? (
+              <>
+                <View style={styles.spacer} />
+                <TextField
+                  label="Delivery OTP"
+                  value={otp}
+                  onChangeText={setOtp}
+                  placeholder="Enter 4-digit OTP"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <View style={styles.spacer} />
+                <Button
+                  title="Verify delivery OTP"
+                  onPress={() => onVerifyOtp('delivery')}
+                  loading={actionLoading}
+                  disabled={otp.length === 0}
+                />
+                <View style={styles.spacer} />
+                <Button title="Resend/regenerate delivery OTP" variant="secondary" onPress={() => onRegenerateOtp('delivery')} loading={actionLoading} />
+              </>
+            ) : null}
           </View>
         ) : null}
 

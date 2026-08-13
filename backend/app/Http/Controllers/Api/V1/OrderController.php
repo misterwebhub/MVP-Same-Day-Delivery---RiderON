@@ -36,7 +36,7 @@ class OrderController extends Controller
         'route.originStation',
         'route.destinationStation',
         'routeSchedule',
-        'parcel',
+        'parcel.images',
         'payments',
         'otpVerifications',
     ];

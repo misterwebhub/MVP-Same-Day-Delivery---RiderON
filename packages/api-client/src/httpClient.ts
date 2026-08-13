@@ -94,9 +94,20 @@ export class HttpClient {
       for (const [key, value] of Object.entries(options.formData)) {
         if (typeof value === 'string') {
           form.append(key, value);
+        } else if (value.uri.startsWith('blob:') || value.uri.startsWith('data:')) {
+          // On web, expo-image-picker returns a blob:/data: URI, not a real file —
+          // and react-native-web's FormData is the browser's real FormData, which
+          // (unlike React Native's own FormData polyfill) does NOT special-case a
+          // plain {uri,name,type} object. Appending it directly throws
+          // "parameter 2 is not of type 'Blob'" synchronously, before fetch() is
+          // even called — which surfaces as a raw (non-ApiClientError) exception
+          // in the caller, i.e. the generic "Could not upload..." fallback message.
+          // Resolve the URI to a real Blob first so the browser's FormData accepts it.
+          const blob = await (await this.fetchImpl(value.uri)).blob();
+          form.append(key, blob, value.name);
         } else {
-          // React Native's FormData accepts {uri,name,type} directly; the DOM lib
-          // types don't know that shape, hence the cast.
+          // Native platforms: React Native's FormData accepts {uri,name,type}
+          // directly; the DOM lib types don't know that shape, hence the cast.
           form.append(key, value as unknown as Blob, value.name);
         }
       }

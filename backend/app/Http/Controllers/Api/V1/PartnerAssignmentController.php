@@ -62,6 +62,37 @@ class PartnerAssignmentController extends Controller
         return $this->success(PartnerAssignmentResource::collection($orders));
     }
 
+    /**
+     * "Unassigned Rides" pool — orders no partner has been matched to yet
+     * (PartnerAssignmentService found no eligible candidate at booking time,
+     * or hasn't run yet), filtered to this partner's eligibility using the
+     * same home-city-vs-route-endpoints rule as
+     * PartnerAssignmentService::attemptAssignment() /
+     * OrderRepository::eligiblePartners() so a rider only ever sees rides
+     * they could actually service. Accepting one here claims it via
+     * accept()'s atomic whereNull('partner_id') update.
+     */
+    public function unassigned(Request $request): JsonResponse
+    {
+        $partner = $this->requirePartner($request);
+        $homeCityId = $partner->current_home_city_id;
+
+        $orders = Order::query()
+            ->whereNull('partner_id')
+            ->where('status', OrderStatus::RIDER_ASSIGNMENT_PENDING)
+            ->whereHas('route', function ($query) use ($homeCityId) {
+                $query->where(function ($q) use ($homeCityId) {
+                    $q->whereHas('originStation', fn ($oq) => $oq->where('city_id', $homeCityId))
+                        ->orWhereHas('destinationStation', fn ($dq) => $dq->where('city_id', $homeCityId));
+                });
+            })
+            ->with(self::RELATIONS)
+            ->orderBy('id')
+            ->get();
+
+        return $this->success(PartnerAssignmentResource::collection($orders));
+    }
+
     public function show(Request $request, Order $order): JsonResponse
     {
         $partner = $this->requirePartner($request);
@@ -75,6 +106,11 @@ class PartnerAssignmentController extends Controller
     public function accept(Request $request, Order $order): JsonResponse
     {
         $partner = $this->requirePartner($request);
+
+        if ($order->partner_id === null) {
+            $this->claimUnassignedOrder($order, $partner);
+        }
+
         abort_unless($order->partner_id === $partner->id, 403);
 
         $updated = $this->stateMachine->transition(
@@ -317,6 +353,44 @@ class PartnerAssignmentController extends Controller
         $order->load(self::RELATIONS);
 
         return $this->success(new PartnerAssignmentResource($order), 'Photo uploaded.');
+    }
+
+    /**
+     * Claims a still-unassigned order for this partner as part of accept().
+     * Re-verifies eligibility server-side (never trust the client's
+     * "unassigned" listing alone) and uses a conditional
+     * whereNull('partner_id') update so two partners racing to accept the
+     * same pooled ride can't both win — whoever's UPDATE actually matches
+     * a NULL row gets it, the loser gets a 409.
+     */
+    private function claimUnassignedOrder(Order $order, DeliveryPartner $partner): void
+    {
+        $order->loadMissing('route.originStation', 'route.destinationStation');
+        $originCityId = $order->route->originStation->city_id;
+        $destinationCityId = $order->route->destinationStation->city_id;
+
+        abort_unless(
+            in_array($partner->current_home_city_id, [$originCityId, $destinationCityId], true),
+            403,
+            'Not eligible for this ride.',
+        );
+
+        $claimed = Order::query()
+            ->where('id', $order->id)
+            ->whereNull('partner_id')
+            ->update(['partner_id' => $partner->id]);
+
+        abort_if($claimed === 0, 409, 'This ride was just claimed by another partner.');
+
+        $this->activityLogger->log(
+            $order,
+            OrderActivityLog::EVENT_PARTNER_MATCHED,
+            OrderActivityLog::ACTOR_PARTNER,
+            $partner->user_id,
+            metadata: ['partner_id' => $partner->id, 'claimed_by_partner' => true],
+        );
+
+        $order->refresh();
     }
 
     private function requirePartner(Request $request): DeliveryPartner

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import { PARCEL_TYPE_LABELS, WEIGHT_SLAB_LABELS, type ProhibitedItem } from '@rideron/types';
@@ -7,6 +7,7 @@ import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { Checkbox } from '../../../components/Checkbox';
+import { ImageViewerModal } from '../../../components/ImageViewerModal';
 import { StepProgress } from '../../../components/StepProgress';
 import { formatPaise } from '../../../utils/currency';
 import { formatDateLabel } from '../../../utils/date';
@@ -34,6 +35,7 @@ export function BookingSummary({ navigation }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
 
   useEffect(() => {
     apiClient.catalog
@@ -91,6 +93,10 @@ export function BookingSummary({ navigation }: Props) {
       setError('Something’s missing from your booking — please review the previous steps.');
       return;
     }
+    if (!draft.parcelPhotoUri) {
+      setError('A parcel photo is required — go back to Parcel Details to add one.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -111,6 +117,25 @@ export function BookingSummary({ navigation }: Props) {
         setError('Order created but no payment was set up — please contact support.');
         return;
       }
+
+      // The parcel photo is required at ParcelDetails, but the upload endpoint
+      // needs an existing order/parcel, so the actual upload only happens now.
+      // The backend also rejects payment verification without one (defense in
+      // depth), but we still surface a clear error here rather than letting
+      // the customer discover it on the Payment screen.
+      if (draft.parcelPhotoUri) {
+        try {
+          await apiClient.orders.uploadParcelPhoto(order.id, {
+            uri: draft.parcelPhotoUri,
+            name: 'parcel-photo.jpg',
+            type: 'image/jpeg',
+          });
+        } catch (e) {
+          setError(e instanceof ApiClientError ? e.message : 'Could not upload your parcel photo. Please try again.');
+          return;
+        }
+      }
+
       navigation.navigate('Payment', { orderId: order.id, paymentId: order.payment.id });
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : 'Could not create the order. Please try again.');
@@ -137,6 +162,17 @@ export function BookingSummary({ navigation }: Props) {
           <SummaryRow label="Weight" value={draft.weightSlab ? WEIGHT_SLAB_LABELS[draft.weightSlab] : '—'} />
           <SummaryRow label="Quantity" value={String(draft.quantity)} />
           <SummaryRow label="Declared value" value={formatPaise(draft.declaredValuePaise)} />
+          {draft.parcelPhotoUri ? (
+            <TouchableOpacity
+              style={styles.photoThumbWrap}
+              activeOpacity={0.85}
+              onPress={() => setPreviewUri(draft.parcelPhotoUri)}
+              accessibilityRole="button"
+              accessibilityLabel="View parcel photo full size"
+            >
+              <Image source={{ uri: draft.parcelPhotoUri }} style={styles.photoThumb} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -201,9 +237,10 @@ export function BookingSummary({ navigation }: Props) {
           title="Confirm & Pay"
           onPress={onConfirm}
           loading={submitting}
-          disabled={!draft.prohibitedItemsAccepted || quoteLoading || !quote}
+          disabled={!draft.prohibitedItemsAccepted || !draft.parcelPhotoUri || quoteLoading || !quote}
         />
       </View>
+      <ImageViewerModal uri={previewUri} onClose={() => setPreviewUri(null)} />
     </View>
   );
 }
@@ -255,6 +292,18 @@ const styles = StyleSheet.create({
   total: {
     ...typography.h2,
     color: color.primary,
+  },
+  photoThumbWrap: {
+    marginTop: space[3],
+    width: 84,
+    height: 84,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: color.border,
+  },
+  photoThumb: {
+    width: '100%',
+    height: '100%',
   },
   prohibitedLink: {
     ...typography.bodyStrong,

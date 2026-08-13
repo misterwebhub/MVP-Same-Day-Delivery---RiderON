@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { color, radius, space, typography } from '@rideron/design-tokens';
+import { color, radius, space, statusBadgeColor, typography, type StatusBadgeKey } from '@rideron/design-tokens';
 import type { Order, OrderStatus } from '@rideron/types';
 import { ORDER_STATUS_SELF_SERVICE_CANCELLABLE } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
+import { Icon } from '../../../components/Icon';
+import { ImageViewerModal } from '../../../components/ImageViewerModal';
 import { formatPaise } from '../../../utils/currency';
 import { formatDateLabel } from '../../../utils/date';
 import { OtpResendCard } from '../components/OtpResendCard';
@@ -54,10 +56,20 @@ const BRANCH_STATUS_TONE: Partial<Record<OrderStatus, { tone: 'warning' | 'error
   DISPUTED: { tone: 'warning', text: 'This order is under dispute review.' },
 };
 
-/** Statuses where showing the Pickup/Delivery OTP resend cards is still useful —
- * i.e. before the corresponding OTP has actually been consumed. */
-const SHOW_PICKUP_OTP: OrderStatus[] = ['WAITING_FOR_PICKUP', 'RIDER_ARRIVED_PICKUP', 'PICKUP_OTP_PENDING'];
-const SHOW_DELIVERY_OTP: OrderStatus[] = ['ARRIVED_DESTINATION', 'WAITING_FOR_RECEIVER', 'DELIVERY_OTP_PENDING'];
+/** Statuses where showing the Pickup/Delivery OTP cards is still useful — i.e.
+ * from the moment the order is booked (the backend generates both codes at
+ * booking time, so both are already valid then — same as what Confirmation
+ * shows right after booking) through the whole tracking lifecycle up until
+ * delivery. Both cards show together throughout — a customer should be able
+ * to see (and share) the receiver's code well before pickup even happens, not
+ * just once the parcel is already in transit. OtpResendCard itself handles
+ * the "verified"/"expired" states once a code is actually consumed, so there's
+ * no need to hide the card the moment its status changes underneath it. */
+const BOOKED_INDEX = STATUS_SEQUENCE.indexOf('BOOKED');
+const DELIVERED_INDEX = STATUS_SEQUENCE.indexOf('DELIVERED');
+function showOtpCards(sequenceIndex: number): boolean {
+  return sequenceIndex >= BOOKED_INDEX && sequenceIndex < DELIVERED_INDEX;
+}
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -82,6 +94,7 @@ export function OrderDetails({ route }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -167,15 +180,22 @@ export function OrderDetails({ route }: Props) {
   const branch = BRANCH_STATUS_TONE[order.status];
   const sequenceIndex = STATUS_SEQUENCE.indexOf(order.status);
   const cancellable = ORDER_STATUS_SELF_SERVICE_CANCELLABLE.includes(order.status);
+  const statusPillColor = statusBadgeColor[order.status as StatusBadgeKey] ?? color.textSecondary;
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
     >
-      <Text style={styles.reference}>{order.booking_reference}</Text>
-      <Text style={styles.status}>{order.status.replace(/_/g, ' ')}</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.reference}>{order.booking_reference}</Text>
+        <View style={[styles.statusPill, { backgroundColor: `${statusPillColor}22` }]}>
+          <View style={[styles.statusPillDot, { backgroundColor: statusPillColor }]} />
+          <Text style={[styles.statusPillText, { color: statusPillColor }]}>{order.status.replace(/_/g, ' ')}</Text>
+        </View>
+      </View>
 
       {branch ? (
         <View style={[styles.banner, branch.tone === 'error' ? styles.bannerError : styles.bannerWarning]}>
@@ -183,40 +203,55 @@ export function OrderDetails({ route }: Props) {
           {order.cancellation_reason ? <Text style={styles.bannerReason}>{order.cancellation_reason}</Text> : null}
         </View>
       ) : (
-        <View style={styles.timeline}>
-          {MILESTONES.map((m) => {
+        <View style={styles.timelineCard}>
+          {MILESTONES.map((m, idx) => {
             const milestoneIndex = STATUS_SEQUENCE.indexOf(m.status);
             const reached = sequenceIndex >= 0 && sequenceIndex >= milestoneIndex;
+            const nextMilestoneIndex = idx < MILESTONES.length - 1 ? STATUS_SEQUENCE.indexOf(MILESTONES[idx + 1].status) : Infinity;
+            const isCurrent = reached && sequenceIndex < nextMilestoneIndex;
+            const isLast = idx === MILESTONES.length - 1;
             return (
               <View key={m.status} style={styles.timelineRow}>
-                <View style={[styles.timelineDot, reached && styles.timelineDotReached]} />
-                <Text style={[styles.timelineLabel, reached && styles.timelineLabelReached]}>{m.label}</Text>
+                <View style={styles.timelineIndicator}>
+                  <View
+                    style={[
+                      styles.timelineDot,
+                      reached && styles.timelineDotReached,
+                      isCurrent && styles.timelineDotCurrent,
+                    ]}
+                  >
+                    {reached && !isCurrent ? <Icon name="checkmark" size={11} color={color.textInverse} /> : null}
+                  </View>
+                  {!isLast ? <View style={[styles.timelineConnector, reached && styles.timelineConnectorReached]} /> : null}
+                </View>
+                <View style={styles.timelineTextWrap}>
+                  <Text style={[styles.timelineLabel, reached && styles.timelineLabelReached, isCurrent && styles.timelineLabelCurrent]}>
+                    {m.label}
+                  </Text>
+                  {isCurrent ? <Text style={styles.timelineCurrentTag}>Current status</Text> : null}
+                </View>
               </View>
             );
           })}
         </View>
       )}
 
-      {SHOW_PICKUP_OTP.includes(order.status) ? (
+      {showOtpCards(sequenceIndex) ? (
         <OtpResendCard
           title="Your OTP"
           hint="Read this out to the rider when they collect the parcel."
           phone={order.sender.phone}
-          orderId={order.id}
           purpose="pickup"
           otp={order.pickup_otp}
-          onResent={(field) => setOrder((o) => (o ? { ...o, pickup_otp: field } : o))}
         />
       ) : null}
-      {SHOW_DELIVERY_OTP.includes(order.status) ? (
+      {showOtpCards(sequenceIndex) ? (
         <OtpResendCard
           title="Receiver OTP"
           hint="Share this with the receiver — they give it to the rider at delivery."
           phone={order.receiver.phone}
-          orderId={order.id}
           purpose="delivery"
           otp={order.delivery_otp}
-          onResent={(field) => setOrder((o) => (o ? { ...o, delivery_otp: field } : o))}
           whatsappShareLabel="Share receiver OTP via WhatsApp"
         />
       ) : null}
@@ -244,7 +279,15 @@ export function OrderDetails({ route }: Props) {
           {order.parcel.photos.length > 0 ? (
             <View style={styles.photoRow}>
               {order.parcel.photos.map((url) => (
-                <Image key={url} source={{ uri: url }} style={styles.photoThumb} />
+                <TouchableOpacity
+                  key={url}
+                  activeOpacity={0.85}
+                  onPress={() => setPreviewUri(url)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View parcel photo full size"
+                >
+                  <Image source={{ uri: url }} style={styles.photoThumb} />
+                </TouchableOpacity>
               ))}
             </View>
           ) : null}
@@ -292,6 +335,8 @@ export function OrderDetails({ route }: Props) {
         <Button title="Cancel order" variant="secondary" onPress={confirmCancel} loading={cancelling} style={styles.cancelButton} />
       ) : null}
     </ScrollView>
+    <ImageViewerModal uri={previewUri} onClose={() => setPreviewUri(null)} />
+    </>
   );
 }
 
@@ -310,15 +355,35 @@ const styles = StyleSheet.create({
     padding: space[6],
     paddingBottom: space[8],
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space[4],
+    flexWrap: 'wrap',
+    gap: space[2],
+  },
   reference: {
     ...typography.h1,
     color: color.textPrimary,
   },
-  status: {
-    ...typography.bodyStrong,
-    color: color.textSecondary,
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[1],
+    borderRadius: radius.pill,
+    paddingHorizontal: space[3],
+    paddingVertical: space[1],
+  },
+  statusPillDot: {
+    width: 7,
+    height: 7,
+    borderRadius: radius.pill,
+  },
+  statusPillText: {
+    ...typography.caption,
+    fontWeight: '700',
     textTransform: 'capitalize',
-    marginBottom: space[4],
   },
   banner: {
     borderRadius: radius.md,
@@ -340,23 +405,55 @@ const styles = StyleSheet.create({
     color: color.textSecondary,
     marginTop: space[1],
   },
-  timeline: {
+  timelineCard: {
+    backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.border,
+    padding: space[4],
+    paddingBottom: space[1],
     marginBottom: space[4],
   },
   timelineRow: {
     flexDirection: 'row',
+  },
+  timelineIndicator: {
     alignItems: 'center',
-    marginBottom: space[2],
+    width: 24,
   },
   timelineDot: {
-    width: 10,
-    height: 10,
+    width: 20,
+    height: 20,
     borderRadius: radius.pill,
-    backgroundColor: color.border,
-    marginRight: space[3],
+    backgroundColor: color.background,
+    borderWidth: 2,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timelineDotReached: {
     backgroundColor: color.primary,
+    borderColor: color.primary,
+  },
+  timelineDotCurrent: {
+    backgroundColor: color.surface,
+    borderColor: color.primary,
+    borderWidth: 3,
+  },
+  timelineConnector: {
+    width: 2,
+    flex: 1,
+    minHeight: space[6],
+    backgroundColor: color.border,
+    marginVertical: 2,
+  },
+  timelineConnectorReached: {
+    backgroundColor: color.primary,
+  },
+  timelineTextWrap: {
+    flex: 1,
+    paddingLeft: space[3],
+    paddingBottom: space[4],
   },
   timelineLabel: {
     ...typography.body,
@@ -365,6 +462,14 @@ const styles = StyleSheet.create({
   timelineLabelReached: {
     ...typography.bodyStrong,
     color: color.textPrimary,
+  },
+  timelineLabelCurrent: {
+    color: color.primary,
+  },
+  timelineCurrentTag: {
+    ...typography.caption,
+    color: color.primary,
+    marginTop: 2,
   },
   card: {
     backgroundColor: color.surface,

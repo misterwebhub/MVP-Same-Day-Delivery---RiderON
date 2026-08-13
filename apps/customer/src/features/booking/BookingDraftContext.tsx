@@ -24,6 +24,11 @@ export interface BookingDraft {
   parcelType: ParcelType | null;
   declaredValuePaise: number;
   specialInstructions: string;
+  /** Local device URI of the required parcel photo, captured on ParcelDetails
+   * and uploaded to the order right after it's created (see BookingSummary's
+   * onConfirm) — the order doesn't exist yet while still in the draft, so the
+   * actual upload can't happen until then. */
+  parcelPhotoUri: string | null;
   sender: BookingPartyDraft;
   receiver: BookingPartyDraft;
   quote: PricingQuoteResponse | null;
@@ -43,6 +48,7 @@ const INITIAL_DRAFT: BookingDraft = {
   parcelType: null,
   declaredValuePaise: 0,
   specialInstructions: '',
+  parcelPhotoUri: null,
   sender: { name: '', phone: '', landmark: '' },
   receiver: { name: '', phone: '', landmark: '' },
   quote: null,

@@ -50,19 +50,15 @@ export function Confirmation({ route, navigation }: Props) {
           title="Your OTP"
           hint="Read this out to the rider when they collect the parcel."
           phone={order?.sender.phone ?? ''}
-          orderId={orderId}
           purpose="pickup"
           otp={order?.pickup_otp}
-          onResent={(field) => setOrder((o) => (o ? { ...o, pickup_otp: field } : o))}
         />
         <OtpResendCard
           title="Receiver OTP"
           hint="Share this with the receiver — they give it to the rider at delivery."
           phone={order?.receiver.phone ?? ''}
-          orderId={orderId}
           purpose="delivery"
           otp={order?.delivery_otp}
-          onResent={(field) => setOrder((o) => (o ? { ...o, delivery_otp: field } : o))}
           whatsappShareLabel="Share receiver OTP via WhatsApp"
         />
       </ScrollView>

@@ -25,6 +25,13 @@ class PaymentController extends Controller
     {
         abort_unless($payment->order->customer_id === $request->user()->id, 403);
 
+        $parcel = $payment->order->parcel;
+        abort_if(
+            $parcel === null || $parcel->images()->count() === 0,
+            422,
+            'Upload a photo of your parcel before completing payment.',
+        );
+
         $this->confirmationService->confirm(
             payment: $payment,
             eventType: PaymentTransaction::EVENT_CHECKOUT_VERIFY,
