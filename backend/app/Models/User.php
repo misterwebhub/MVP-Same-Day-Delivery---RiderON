@@ -3,8 +3,6 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Filament\Models\Contracts\FilamentUser;
-use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -13,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable implements FilamentUser
+class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
@@ -139,7 +137,11 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(AppSetting::class, 'updated_by');
     }
 
-    public function canAccessPanel(Panel $panel): bool
+    /**
+     * Gate for the server-rendered /admin panel (replaces the old Filament
+     * FilamentUser::canAccessPanel() contract 1:1 — same status+role check).
+     */
+    public function canAccessAdmin(): bool
     {
         return $this->status === self::STATUS_ACTIVE
             && in_array($this->role, [self::ROLE_ADMIN, self::ROLE_OPS, self::ROLE_SUPPORT], true);

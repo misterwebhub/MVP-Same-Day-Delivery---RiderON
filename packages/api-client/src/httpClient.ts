@@ -13,6 +13,13 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+/** React Native's shape for a picked image/file passed into a FormData field. */
+export interface FormDataFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -21,6 +28,9 @@ export interface RequestOptions {
   idempotencyKey?: string;
   /** Skip attaching Authorization + skip the refresh-and-retry dance (login/otp endpoints). */
   skipAuth?: boolean;
+  /** Multipart upload (photo evidence endpoints). Mutually exclusive with `body` —
+   * the runtime sets its own Content-Type boundary, so we must not set one manually. */
+  formData?: Record<string, FormDataFile | string>;
 }
 
 /**
@@ -66,6 +76,8 @@ export class HttpClient {
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
+    // formData: deliberately no Content-Type header — fetch/RN sets the multipart
+    // boundary itself only when it builds the body, not when we set the header.
     if (options.idempotencyKey) {
       headers['Idempotency-Key'] = options.idempotencyKey;
     }
@@ -76,12 +88,29 @@ export class HttpClient {
       }
     }
 
+    let requestBody: BodyInit | undefined;
+    if (options.formData) {
+      const form = new FormData();
+      for (const [key, value] of Object.entries(options.formData)) {
+        if (typeof value === 'string') {
+          form.append(key, value);
+        } else {
+          // React Native's FormData accepts {uri,name,type} directly; the DOM lib
+          // types don't know that shape, hence the cast.
+          form.append(key, value as unknown as Blob, value.name);
+        }
+      }
+      requestBody = form;
+    } else if (options.body !== undefined) {
+      requestBody = JSON.stringify(options.body);
+    }
+
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
         method: options.method ?? 'GET',
         headers,
-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        body: requestBody,
       });
     } catch (networkError) {
       throw new ApiClientError(0, null, networkError instanceof Error ? networkError.message : 'Network request failed.');

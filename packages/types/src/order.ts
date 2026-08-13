@@ -52,6 +52,8 @@ export interface OrderParcelDetails {
   quantity: number;
   declared_value_paise: number;
   special_instructions: string | null;
+  /** Photos the customer attached at booking time — full URLs, empty array if none uploaded. */
+  photos: string[];
 }
 
 export interface OrderPaymentSummary {
@@ -60,6 +62,25 @@ export interface OrderPaymentSummary {
   provider_order_id: string;
   amount_paise: number;
   status: PaymentStatus;
+}
+
+export type OrderOtpStatus = 'pending' | 'verified' | 'expired';
+
+export interface OrderOtpField {
+  status: OrderOtpStatus;
+  /**
+   * The live plaintext code, shown directly in the app so the sender can
+   * read it to the pickup rider (and relay the delivery code to the
+   * receiver themselves). Null whenever there's nothing safe/valid to
+   * show — already verified, expired, or the short-lived display cache
+   * on the backend has expired/missed (e.g. app opened long after the
+   * code was generated). Treat null as "not available right now, use
+   * resend" — never as an error.
+   */
+  code: string | null;
+  /** ISO 8601. */
+  expires_at: string | null;
+  resend_count: number;
 }
 
 export interface Order {
@@ -93,6 +114,13 @@ export interface Order {
   currency: string;
 
   payment?: OrderPaymentSummary | null;
+
+  pickup_otp?: OrderOtpField | null;
+  delivery_otp?: OrderOtpField | null;
+
+  /** Rider-captured proof-of-custody photos — full URLs, null until the rider uploads. */
+  pickup_proof_photo_url?: string | null;
+  delivery_proof_photo_url?: string | null;
 
   /** ISO 8601 or null. */
   cancelled_at: string | null;
@@ -143,6 +171,8 @@ export interface PaymentStatusResponse {
 }
 
 export interface ResendOrderOtpResponse {
+  /** Same "not available right now" semantics as OrderOtpField.code. */
+  code: string | null;
   /** ISO 8601. */
   expires_at: string;
   resend_count: number;
@@ -154,4 +184,10 @@ export interface VerifyOrderOtpPayload {
 
 export interface VerifyOrderOtpResponse {
   order_status: OrderStatus;
+}
+
+export interface RegenerateOrderOtpResponse {
+  purpose: 'pickup' | 'delivery';
+  /** ISO 8601. Deliberately no `code` field — the partner never sees the OTP value. */
+  expires_at: string;
 }

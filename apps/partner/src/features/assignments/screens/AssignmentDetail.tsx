@@ -1,14 +1,40 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, statusBadgeColor, typography } from '@rideron/design-tokens';
 import type { CallTarget, PartnerAssignment } from '@rideron/types';
-import { ApiClientError } from '@rideron/api-client';
+import { ApiClientError, type GeoCoords } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
 import { apiClient } from '../../../services/httpClient';
 import { isPendingAccept, statusLabel } from '../statusHelpers';
 import type { RootStackParamList } from '../../../navigation/types';
+
+/**
+ * Best-effort GPS for pickup/delivery fraud-prevention evidence (docs
+ * addendum) — rider-side only, the customer app stays IP-only. A denied
+ * permission, a timeout, or any other failure must never block the
+ * underlying action, so this always resolves (never rejects): it returns
+ * undefined instead of throwing, and callers just omit the coords.
+ */
+async function getBestEffortCoords(): Promise<GeoCoords | undefined> {
+  try {
+    const { status } = await Location.getForegroundPermissionsAsync();
+    let granted = status === 'granted';
+    if (!granted) {
+      const requested = await Location.requestForegroundPermissionsAsync();
+      granted = requested.status === 'granted';
+    }
+    if (!granted) return undefined;
+
+    const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+  } catch {
+    return undefined;
+  }
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AssignmentDetail'>;
 
@@ -73,15 +99,18 @@ export function AssignmentDetail({ route }: Props) {
   };
 
   const onAccept = () => runAction(() => apiClient.partner.assignments.accept(orderId));
-  const onArrivedPickup = () => runAction(() => apiClient.partner.assignments.arrivedPickup(orderId));
+  const onArrivedPickup = () =>
+    runAction(async () => apiClient.partner.assignments.arrivedPickup(orderId, await getBestEffortCoords()));
   const onStartTransit = () => runAction(() => apiClient.partner.assignments.startTransit(orderId));
-  const onArrivedDestination = () => runAction(() => apiClient.partner.assignments.arrivedDestination(orderId));
+  const onArrivedDestination = () =>
+    runAction(async () => apiClient.partner.assignments.arrivedDestination(orderId, await getBestEffortCoords()));
 
   const onVerifyOtp = async (purpose: 'pickup' | 'delivery') => {
     if (otp.length === 0) return;
     setActionLoading(true);
     try {
-      await apiClient.orders.verifyOtp(orderId, purpose, { otp });
+      const coords = await getBestEffortCoords();
+      await apiClient.orders.verifyOtp(orderId, purpose, { otp, ...coords });
       setOtp('');
       await load();
     } catch (e) {
@@ -109,6 +138,44 @@ export function AssignmentDetail({ route }: Props) {
       await Linking.openURL(url);
     } catch {
       Alert.alert('Could not open maps');
+    }
+  };
+
+  const onRegenerateOtp = async (purpose: 'pickup' | 'delivery') => {
+    setActionLoading(true);
+    try {
+      const result = await apiClient.partner.assignments.regenerateOtp(orderId, purpose);
+      Alert.alert('Code regenerated', `A new ${purpose} OTP was sent. Valid until ${new Date(result.expires_at).toLocaleTimeString()}.`);
+    } catch (e) {
+      Alert.alert('Could not regenerate', e instanceof ApiClientError ? e.message : 'Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const onCaptureProofPhoto = async (purpose: 'pickup' | 'delivery') => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Camera permission needed', 'Allow camera access to capture the proof photo.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.6, base64: false });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const file = { uri: asset.uri, name: `${purpose}-proof.jpg`, type: 'image/jpeg' };
+
+    setActionLoading(true);
+    try {
+      const coords = await getBestEffortCoords();
+      const updated = purpose === 'pickup'
+        ? await apiClient.partner.assignments.uploadPickupPhoto(orderId, file, coords)
+        : await apiClient.partner.assignments.uploadDeliveryPhoto(orderId, file, coords);
+      setAssignment(updated);
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof ApiClientError ? e.message : 'Please try again.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -212,6 +279,16 @@ export function AssignmentDetail({ route }: Props) {
 
         {status === 'RIDER_ARRIVED_PICKUP' || status === 'PICKUP_OTP_PENDING' ? (
           <View>
+            <Text style={styles.subText}>
+              A photo of the parcel is required before the pickup OTP can be verified (fraud prevention).
+            </Text>
+            <View style={styles.spacer} />
+            {assignment.pickup_photo_uploaded ? (
+              <Text style={styles.doneText}>Pickup photo captured ✓</Text>
+            ) : (
+              <Button title="Capture pickup photo" variant="secondary" onPress={() => onCaptureProofPhoto('pickup')} loading={actionLoading} />
+            )}
+            <View style={styles.spacer} />
             <TextField
               label="Pickup OTP"
               value={otp}
@@ -221,7 +298,14 @@ export function AssignmentDetail({ route }: Props) {
               maxLength={6}
             />
             <View style={styles.spacer} />
-            <Button title="Verify pickup OTP" onPress={() => onVerifyOtp('pickup')} loading={actionLoading} disabled={otp.length === 0} />
+            <Button
+              title="Verify pickup OTP"
+              onPress={() => onVerifyOtp('pickup')}
+              loading={actionLoading}
+              disabled={otp.length === 0 || !assignment.pickup_photo_uploaded}
+            />
+            <View style={styles.spacer} />
+            <Button title="Resend/regenerate pickup OTP" variant="secondary" onPress={() => onRegenerateOtp('pickup')} loading={actionLoading} />
           </View>
         ) : null}
 
@@ -239,6 +323,16 @@ export function AssignmentDetail({ route }: Props) {
 
         {status === 'ARRIVED_DESTINATION' || status === 'WAITING_FOR_RECEIVER' || status === 'DELIVERY_OTP_PENDING' ? (
           <View>
+            <Text style={styles.subText}>
+              A photo at handoff is required before the delivery OTP can be verified (fraud prevention).
+            </Text>
+            <View style={styles.spacer} />
+            {assignment.delivery_photo_uploaded ? (
+              <Text style={styles.doneText}>Delivery photo captured ✓</Text>
+            ) : (
+              <Button title="Capture delivery photo" variant="secondary" onPress={() => onCaptureProofPhoto('delivery')} loading={actionLoading} />
+            )}
+            <View style={styles.spacer} />
             <TextField
               label="Delivery OTP"
               value={otp}
@@ -248,7 +342,14 @@ export function AssignmentDetail({ route }: Props) {
               maxLength={6}
             />
             <View style={styles.spacer} />
-            <Button title="Verify delivery OTP" onPress={() => onVerifyOtp('delivery')} loading={actionLoading} disabled={otp.length === 0} />
+            <Button
+              title="Verify delivery OTP"
+              onPress={() => onVerifyOtp('delivery')}
+              loading={actionLoading}
+              disabled={otp.length === 0 || !assignment.delivery_photo_uploaded}
+            />
+            <View style={styles.spacer} />
+            <Button title="Resend/regenerate delivery OTP" variant="secondary" onPress={() => onRegenerateOtp('delivery')} loading={actionLoading} />
           </View>
         ) : null}
 

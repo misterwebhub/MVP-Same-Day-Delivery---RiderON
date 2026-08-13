@@ -31,6 +31,9 @@ export interface PartnerAssignmentParcel {
   /** True when declared_value_paise >= config('parcel.high_value_threshold_paise') — the raw amount is never exposed. */
   high_value: boolean;
   special_instructions: string | null;
+  /** Photos the customer attached at booking — the rider compares these against the
+   * physical parcel at pickup as a fraud check (does the parcel match what was declared). */
+  photos: string[];
 }
 
 export interface PartnerAssignment {
@@ -54,6 +57,11 @@ export interface PartnerAssignment {
   receiver: PartnerAssignmentParty;
 
   parcel?: PartnerAssignmentParcel | null;
+
+  /** Whether the rider has already captured proof-of-custody photos — used to gate the
+   * OTP verify button client-side (backend also enforces this, see OrderOtpController). */
+  pickup_photo_uploaded: boolean;
+  delivery_photo_uploaded: boolean;
 
   /** ISO 8601 or null — set once ARRIVED_DESTINATION is reached; the receiver-wait deadline. */
   waiting_deadline_at: string | null;

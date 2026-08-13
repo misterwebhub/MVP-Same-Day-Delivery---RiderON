@@ -13,6 +13,7 @@ use App\Models\OtpVerificationLog;
 use App\Services\Sms\SmsProvider;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
@@ -29,6 +30,73 @@ class OtpService
         ?int $userId,
         ?CarbonInterface $expiresAt = null,
     ): OtpVerification {
+        return $this->generateInternal($purpose, $phone, $orderId, $userId, $expiresAt)[0];
+    }
+
+    /**
+     * Same as generate(), but also returns the transient plaintext OTP —
+     * intended only for trusted server-side callers (e.g. the admin panel's
+     * "generate OTP for testing" action) that need to display the code
+     * without waiting on SMS delivery. The plaintext is never persisted.
+     *
+     * @return array{0: OtpVerification, 1: string}
+     */
+    public function generateWithPlainOtp(
+        string $purpose,
+        string $phone,
+        ?int $orderId,
+        ?int $userId,
+        ?CarbonInterface $expiresAt = null,
+    ): array {
+        return $this->generateInternal($purpose, $phone, $orderId, $userId, $expiresAt);
+    }
+
+    public function resend(OtpVerification $otp, ?CarbonInterface $expiresAt = null): OtpVerification
+    {
+        return $this->resendInternal($otp, $expiresAt)[0];
+    }
+
+    /**
+     * Same as resend(), but also returns the transient plaintext OTP — see
+     * generateWithPlainOtp() for why this exists. $bypassLimits skips the
+     * resend-count/cooldown guards (still used by resend_count bookkeeping,
+     * just not enforced) — only intended for the admin "generate for
+     * testing" action, never for the customer-facing resend endpoint.
+     *
+     * @return array{0: OtpVerification, 1: string}
+     */
+    public function resendWithPlainOtp(OtpVerification $otp, ?CarbonInterface $expiresAt = null, bool $bypassLimits = false): array
+    {
+        return $this->resendInternal($otp, $expiresAt, $bypassLimits);
+    }
+
+    /**
+     * Returns the currently-valid plaintext OTP for in-app display (docs/05
+     * "show the code in the order screen, not just SMS"), or null if there
+     * is nothing to show — already verified, expired, or the ephemeral
+     * cache entry is gone (e.g. cache store was flushed, or this is an old
+     * OTP generated before this cache existed). Callers must treat null as
+     * "fall back to SMS / offer resend", never as an error.
+     */
+    public function peekCachedPlainOtp(OtpVerification $otp): ?string
+    {
+        if ($otp->verified_at !== null || $otp->expires_at->isPast()) {
+            return null;
+        }
+
+        return Cache::get($this->plainOtpCacheKey($otp));
+    }
+
+    /**
+     * @return array{0: OtpVerification, 1: string}
+     */
+    private function generateInternal(
+        string $purpose,
+        string $phone,
+        ?int $orderId,
+        ?int $userId,
+        ?CarbonInterface $expiresAt = null,
+    ): array {
         $otp = $this->generateNumericOtp();
         $now = Carbon::now();
 
@@ -44,23 +112,29 @@ class OtpService
         ]);
 
         $this->dispatchSms($phone, $purpose, $otp);
+        $this->cachePlainOtp($verification, $otp);
 
-        return $verification;
+        return [$verification, $otp];
     }
 
-    public function resend(OtpVerification $otp, ?CarbonInterface $expiresAt = null): OtpVerification
+    /**
+     * @return array{0: OtpVerification, 1: string}
+     */
+    private function resendInternal(OtpVerification $otp, ?CarbonInterface $expiresAt = null, bool $bypassLimits = false): array
     {
         if ($otp->verified_at !== null) {
             throw new OtpAlreadyVerifiedException();
         }
 
-        if ($otp->resend_count >= (int) config('otp.max_resends')) {
-            throw new OtpResendLimitException();
-        }
+        if (! $bypassLimits) {
+            if ($otp->resend_count >= (int) config('otp.max_resends')) {
+                throw new OtpResendLimitException();
+            }
 
-        $cooldownUntil = $otp->last_sent_at?->clone()->addSeconds((int) config('otp.resend_cooldown_seconds'));
-        if ($cooldownUntil !== null && $cooldownUntil->isFuture()) {
-            throw new OtpResendCooldownException($cooldownUntil);
+            $cooldownUntil = $otp->last_sent_at?->clone()->addSeconds((int) config('otp.resend_cooldown_seconds'));
+            if ($cooldownUntil !== null && $cooldownUntil->isFuture()) {
+                throw new OtpResendCooldownException($cooldownUntil);
+            }
         }
 
         $newOtp = $this->generateNumericOtp();
@@ -76,8 +150,9 @@ class OtpService
         ])->save();
 
         $this->dispatchSms($otp->phone, $otp->purpose, $newOtp);
+        $this->cachePlainOtp($otp, $newOtp);
 
-        return $otp;
+        return [$otp, $newOtp];
     }
 
     public function verify(
@@ -153,7 +228,32 @@ class OtpService
             throw $exceptionToThrow;
         }
 
+        $this->forgetCachedPlainOtp($otp);
+
         return $otp;
+    }
+
+    /**
+     * Ephemeral in-app display cache for the plaintext OTP, keyed by the
+     * verification row. TTL matches the OTP's own expiry, so the cached
+     * value never outlives the code's real validity window — this is not
+     * "persisting" the secret, it's a short-lived mirror of what's already
+     * being sent via SMS, cleared immediately on successful verification.
+     */
+    private function cachePlainOtp(OtpVerification $otp, string $plainOtp): void
+    {
+        $ttlSeconds = max(1, (int) Carbon::now()->diffInSeconds($otp->expires_at, false));
+        Cache::put($this->plainOtpCacheKey($otp), $plainOtp, $ttlSeconds);
+    }
+
+    private function forgetCachedPlainOtp(OtpVerification $otp): void
+    {
+        Cache::forget($this->plainOtpCacheKey($otp));
+    }
+
+    private function plainOtpCacheKey(OtpVerification $otp): string
+    {
+        return "otp_plain:{$otp->id}";
     }
 
     private function generateNumericOtp(): string

@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Partner-facing order shape (docs/06). Deliberately omits everything the
@@ -48,7 +49,12 @@ class PartnerAssignmentResource extends JsonResource
                 'quantity' => $this->parcel->quantity,
                 'high_value' => $this->parcel->declared_value_paise >= (int) config('parcel.high_value_threshold_paise'),
                 'special_instructions' => $this->parcel->special_instructions,
+                'photos' => $this->parcel->relationLoaded('images')
+                    ? $this->parcel->images->map(fn ($image) => url(Storage::disk('public')->url($image->storage_path)))->values()
+                    : [],
             ]),
+            'pickup_photo_uploaded' => $this->pickup_proof_photo_path !== null,
+            'delivery_photo_uploaded' => $this->delivery_proof_photo_path !== null,
             'waiting_deadline_at' => $this->waiting_deadline_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

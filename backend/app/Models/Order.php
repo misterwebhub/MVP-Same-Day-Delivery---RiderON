@@ -44,6 +44,8 @@ class Order extends Model
         'cancelled_by',
         'arrived_destination_at',
         'waiting_deadline_at',
+        'pickup_proof_photo_path',
+        'delivery_proof_photo_path',
         'delivered_at',
         'completed_at',
         'idempotency_key',
@@ -112,6 +114,11 @@ class Order extends Model
     public function otpVerifications(): HasMany
     {
         return $this->hasMany(OtpVerification::class);
+    }
+
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(OrderActivityLog::class);
     }
 
     public function supportTickets(): HasMany

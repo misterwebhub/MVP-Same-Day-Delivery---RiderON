@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\OrderCallController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\OrderOtpController;
+use App\Http\Controllers\Api\V1\ParcelPhotoController;
 use App\Http\Controllers\Api\V1\PartnerAssignmentController;
 use App\Http\Controllers\Api\V1\PartnerEarningsController;
 use App\Http\Controllers\Api\V1\PaymentController;
@@ -77,6 +78,8 @@ Route::prefix('v1')->group(function () {
         Route::post('orders/{order}/otp/{purpose}/resend', [OrderOtpController::class, 'resend'])
             ->whereIn('purpose', ['pickup', 'delivery']);
 
+        Route::post('orders/{order}/parcel/photos', [ParcelPhotoController::class, 'store']);
+
         Route::middleware('role:partner')->group(function () {
             Route::post('orders/{order}/otp/{purpose}/verify', [OrderOtpController::class, 'verify'])
                 ->whereIn('purpose', ['pickup', 'delivery']);
@@ -93,6 +96,10 @@ Route::prefix('v1')->group(function () {
                 Route::post('{order}/arrived-pickup', [PartnerAssignmentController::class, 'arrivedPickup']);
                 Route::post('{order}/start-transit', [PartnerAssignmentController::class, 'startTransit']);
                 Route::post('{order}/arrived-destination', [PartnerAssignmentController::class, 'arrivedDestination']);
+                Route::post('{order}/otp/{purpose}/regenerate', [PartnerAssignmentController::class, 'regenerateOtp'])
+                    ->whereIn('purpose', ['pickup', 'delivery']);
+                Route::post('{order}/pickup-photo', [PartnerAssignmentController::class, 'uploadPickupPhoto']);
+                Route::post('{order}/delivery-photo', [PartnerAssignmentController::class, 'uploadDeliveryPhoto']);
             });
         });
     });

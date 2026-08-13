@@ -2,9 +2,12 @@
 
 namespace App\Services\Partners;
 
-use App\Constants\OrderStatus;
 use App\Models\DeliveryPartner;
+use App\Models\Notification;
 use App\Models\Order;
+use App\Models\OrderActivityLog;
+use App\Services\Activity\ActivityLogger;
+use App\Services\Notifications\NotificationService;
 
 /**
  * Matches a candidate delivery partner to an order sitting in
@@ -14,26 +17,37 @@ use App\Models\Order;
  * found, the order is left unassigned (partner_id null) rather than faking
  * a match, per docs/09's "rider unavailable" edge case: honest
  * "finding a delivery partner" state, visible to admin for manual assignment.
+ *
+ * A partner travels a scheduled train/bus route and can carry multiple
+ * parcels on the same trip, so having another live order on the same
+ * booking_date does NOT make a partner ineligible — same-day multi-order
+ * assignment to one partner is normal, not a double-booking conflict.
+ *
+ * Eligibility matches the partner's home city against EITHER end of the
+ * order's route (origin or destination): a partner rides the corridor
+ * round-trip — e.g. a Kanpur-based partner carries outbound parcels to
+ * Lucknow, then also picks up parcels in Lucknow for the return leg back
+ * to Kanpur — so they stay eligible for both directions of their home
+ * corridor, not just orders originating from their home city.
  */
 class PartnerAssignmentService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+        private readonly ActivityLogger $activityLogger,
+    ) {
+    }
+
     public function attemptAssignment(Order $order): ?DeliveryPartner
     {
-        $order->loadMissing('route.originStation');
+        $order->loadMissing('route.originStation', 'route.destinationStation');
         $originCityId = $order->route->originStation->city_id;
-
-        $busyPartnerIds = Order::query()
-            ->where('id', '!=', $order->id)
-            ->where('booking_date', $order->booking_date)
-            ->whereNotIn('status', [OrderStatus::CANCELLED, OrderStatus::PAYMENT_FAILED, OrderStatus::COMPLETED])
-            ->whereNotNull('partner_id')
-            ->pluck('partner_id');
+        $destinationCityId = $order->route->destinationStation->city_id;
 
         $partner = DeliveryPartner::query()
             ->where('is_active', true)
             ->where('verification_status', DeliveryPartner::VERIFICATION_VERIFIED)
-            ->where('current_home_city_id', $originCityId)
-            ->whereNotIn('id', $busyPartnerIds)
+            ->whereIn('current_home_city_id', array_unique([$originCityId, $destinationCityId]))
             ->orderBy('completed_deliveries_count')
             ->orderBy('id')
             ->first();
@@ -43,6 +57,23 @@ class PartnerAssignmentService
         }
 
         $order->forceFill(['partner_id' => $partner->id])->save();
+
+        $this->activityLogger->log(
+            $order,
+            OrderActivityLog::EVENT_PARTNER_MATCHED,
+            OrderActivityLog::ACTOR_SYSTEM,
+            null,
+            metadata: ['partner_id' => $partner->id],
+        );
+
+        $this->notifications->notifyUser(
+            $partner->user_id,
+            'new_order_assigned',
+            'New delivery assignment',
+            "Order {$order->booking_reference} has been assigned to you. Open the app to accept it.",
+            ['order_id' => $order->id],
+            Notification::CHANNEL_PUSH,
+        );
 
         return $partner;
     }

@@ -14,9 +14,11 @@ use App\Models\OrderStatusHistory;
 use App\Models\Parcel;
 use App\Models\Payment;
 use App\Models\ProhibitedItemsVersion;
+use App\Models\OrderActivityLog;
 use App\Models\Refund;
 use App\Models\Route;
 use App\Models\RouteSchedule;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Catalog\RouteScheduleAvailabilityService;
 use App\Services\Orders\BookingReferenceGenerator;
 use App\Services\Orders\OrderCancellationPolicy;
@@ -36,6 +38,7 @@ class OrderController extends Controller
         'routeSchedule',
         'parcel',
         'payments',
+        'otpVerifications',
     ];
 
     public function __construct(
@@ -45,6 +48,7 @@ class OrderController extends Controller
         private readonly OrderCancellationPolicy $cancellationPolicy,
         private readonly OrderStateMachine $stateMachine,
         private readonly PaymentGateway $paymentGateway,
+        private readonly ActivityLogger $activityLogger,
     ) {
     }
 
@@ -122,6 +126,15 @@ class OrderController extends Controller
             $this->processRefund($updated, $decision->refundPercentage);
         }
 
+        $this->activityLogger->log(
+            $updated,
+            OrderActivityLog::EVENT_ORDER_CANCELLED,
+            OrderActivityLog::ACTOR_CUSTOMER,
+            $request->user()->id,
+            $request,
+            metadata: ['reason' => $request->input('reason')],
+        );
+
         $updated->load(self::ORDER_RELATIONS);
 
         return $this->success(new OrderResource($updated), 'Order cancelled.');
@@ -181,6 +194,14 @@ class OrderController extends Controller
         ]);
 
         $order->forceFill(['prohibited_items_declared_at' => now()])->save();
+
+        $this->activityLogger->log(
+            $order,
+            OrderActivityLog::EVENT_ORDER_BOOKED,
+            OrderActivityLog::ACTOR_CUSTOMER,
+            $request->user()->id,
+            $request,
+        );
 
         $gatewayOrder = $this->paymentGateway->createOrder($quote['total_amount_paise'], 'INR', $bookingReference);
 

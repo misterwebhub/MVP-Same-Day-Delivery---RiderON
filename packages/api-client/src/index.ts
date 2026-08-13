@@ -2,9 +2,9 @@ export * from './errors';
 export * from './tokenStorage';
 export * from './idempotency';
 export { HttpClient } from './httpClient';
-export type { ApiClientOptions, RequestOptions } from './httpClient';
+export type { ApiClientOptions, RequestOptions, FormDataFile } from './httpClient';
 export { createResources } from './resources';
-export type { ApiResources } from './resources';
+export type { ApiResources, GeoCoords } from './resources';
 
 import { HttpClient, type ApiClientOptions } from './httpClient';
 import { createResources, type ApiResources } from './resources';

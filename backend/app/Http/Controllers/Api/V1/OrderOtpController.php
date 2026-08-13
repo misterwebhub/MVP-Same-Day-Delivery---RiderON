@@ -6,13 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Orders\VerifyOrderOtpRequest;
 use App\Models\Order;
 use App\Services\Orders\OrderOtpVerificationService;
+use App\Services\Otp\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class OrderOtpController extends Controller
 {
-    public function __construct(private readonly OrderOtpVerificationService $otpVerificationService)
-    {
+    public function __construct(
+        private readonly OrderOtpVerificationService $otpVerificationService,
+        private readonly OtpService $otpService,
+    ) {
     }
 
     /**
@@ -29,6 +32,7 @@ class OrderOtpController extends Controller
             : $this->otpVerificationService->resendDelivery($order);
 
         return $this->success([
+            'code' => $this->otpService->peekCachedPlainOtp($otp),
             'expires_at' => $otp->expires_at->toIso8601String(),
             'resend_count' => $otp->resend_count,
         ], 'OTP resent.');
@@ -45,8 +49,8 @@ class OrderOtpController extends Controller
         $inputOtp = $request->string('otp')->toString();
 
         $updated = $purpose === 'pickup'
-            ? $this->otpVerificationService->verifyPickup($order, $partner, $inputOtp, $request->ip())
-            : $this->otpVerificationService->verifyDelivery($order, $partner, $inputOtp, $request->ip());
+            ? $this->otpVerificationService->verifyPickup($order, $partner, $inputOtp, $request)
+            : $this->otpVerificationService->verifyDelivery($order, $partner, $inputOtp, $request);
 
         return $this->success(['order_status' => $updated->status], 'OTP verified.');
     }

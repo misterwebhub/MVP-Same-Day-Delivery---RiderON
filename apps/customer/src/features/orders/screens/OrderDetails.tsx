@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { Order, OrderStatus } from '@rideron/types';
@@ -80,6 +81,7 @@ export function OrderDetails({ route }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -118,6 +120,31 @@ export function OrderDetails({ route }: Props) {
       Alert.alert('Could not cancel', e instanceof ApiClientError ? e.message : 'Please try again.');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const onAddParcelPhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo permission needed', 'Allow photo library access to attach a parcel photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    setUploadingPhoto(true);
+    try {
+      const updated = await apiClient.orders.uploadParcelPhoto(orderId, {
+        uri: asset.uri,
+        name: 'parcel-photo.jpg',
+        type: 'image/jpeg',
+      });
+      setOrder(updated);
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof ApiClientError ? e.message : 'Please try again.');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -171,10 +198,27 @@ export function OrderDetails({ route }: Props) {
       )}
 
       {SHOW_PICKUP_OTP.includes(order.status) ? (
-        <OtpResendCard title="Pickup OTP" phone={order.sender.phone} orderId={order.id} purpose="pickup" />
+        <OtpResendCard
+          title="Your OTP"
+          hint="Read this out to the rider when they collect the parcel."
+          phone={order.sender.phone}
+          orderId={order.id}
+          purpose="pickup"
+          otp={order.pickup_otp}
+          onResent={(field) => setOrder((o) => (o ? { ...o, pickup_otp: field } : o))}
+        />
       ) : null}
       {SHOW_DELIVERY_OTP.includes(order.status) ? (
-        <OtpResendCard title="Delivery OTP" phone={order.receiver.phone} orderId={order.id} purpose="delivery" />
+        <OtpResendCard
+          title="Receiver OTP"
+          hint="Share this with the receiver — they give it to the rider at delivery."
+          phone={order.receiver.phone}
+          orderId={order.id}
+          purpose="delivery"
+          otp={order.delivery_otp}
+          onResent={(field) => setOrder((o) => (o ? { ...o, delivery_otp: field } : o))}
+          whatsappShareLabel="Share receiver OTP via WhatsApp"
+        />
       ) : null}
 
       <View style={styles.card}>
@@ -196,6 +240,23 @@ export function OrderDetails({ route }: Props) {
           <SummaryRow label="Quantity" value={String(order.parcel.quantity)} />
           <SummaryRow label="Declared value" value={formatPaise(order.parcel.declared_value_paise)} />
           {order.parcel.special_instructions ? <SummaryRow label="Notes" value={order.parcel.special_instructions} /> : null}
+
+          {order.parcel.photos.length > 0 ? (
+            <View style={styles.photoRow}>
+              {order.parcel.photos.map((url) => (
+                <Image key={url} source={{ uri: url }} style={styles.photoThumb} />
+              ))}
+            </View>
+          ) : null}
+          {sequenceIndex >= 0 && sequenceIndex < STATUS_SEQUENCE.indexOf('PICKED_UP') ? (
+            <Button
+              title={uploadingPhoto ? 'Uploading…' : 'Add parcel photo'}
+              variant="secondary"
+              onPress={onAddParcelPhoto}
+              loading={uploadingPhoto}
+              style={styles.addPhotoButton}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -352,5 +413,20 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     marginTop: space[2],
+  },
+  photoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: space[3],
+    gap: space[2],
+  },
+  photoThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.md,
+    backgroundColor: color.border,
+  },
+  addPhotoButton: {
+    marginTop: space[3],
   },
 });

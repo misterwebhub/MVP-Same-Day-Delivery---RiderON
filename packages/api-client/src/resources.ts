@@ -18,6 +18,7 @@ import type {
   Profile,
   ProhibitedItemsResponse,
   QuotePayload,
+  RegenerateOrderOtpResponse,
   RequestOtpPayload,
   RequestOtpResponse,
   ResendOrderOtpResponse,
@@ -34,8 +35,28 @@ import type {
   VerifyPaymentPayload,
   VerifyPaymentResponse,
 } from '@rideron/types';
-import type { HttpClient } from './httpClient';
+import type { HttpClient, FormDataFile } from './httpClient';
 import { generateIdempotencyKey } from './idempotency';
+
+/**
+ * Best-effort GPS point (docs fraud-prevention addendum). Rider-side only —
+ * the customer app stays IP-only by design, no location permission prompt.
+ * Always optional: a denied permission must never block the underlying
+ * action, so every call site accepts `coords?: GeoCoords` and simply omits
+ * the fields when unavailable.
+ */
+export interface GeoCoords {
+  latitude: number;
+  longitude: number;
+}
+
+/** Multipart form fields don't accept numbers, so GPS coords get stringified
+ * for the `formData` photo-upload calls; omitted entirely when not given. */
+function geoCoordsToFormFields(coords?: GeoCoords): Record<string, string> {
+  if (!coords) return {};
+
+  return { latitude: String(coords.latitude), longitude: String(coords.longitude) };
+}
 
 /**
  * Typed endpoint methods, grouped to mirror routes/api.php. Each group is a
@@ -136,9 +157,22 @@ export function createResources(http: HttpClient) {
       resendOtp: (orderId: number, purpose: 'pickup' | 'delivery') =>
         http.request<ResendOrderOtpResponse>(`/orders/${orderId}/otp/${purpose}/resend`, { method: 'POST' }),
 
+      /** Customer-only — attaches a photo of the parcel to the order at booking time
+       * (or any time before delivery), so the rider can visually confirm the physical
+       * parcel matches what was declared. */
+      uploadParcelPhoto: (orderId: number, file: FormDataFile) =>
+        http.request<Order>(`/orders/${orderId}/parcel/photos`, {
+          method: 'POST',
+          formData: { photo: file },
+        }),
+
       /** Partner-only (role:partner) — verifies the pickup/delivery OTP the
-       * customer/receiver reads out, advancing the order's real state machine. */
-      verifyOtp: (orderId: number, purpose: 'pickup' | 'delivery', payload: VerifyOrderOtpPayload) =>
+       * customer/receiver reads out, advancing the order's real state machine.
+       * `payload` may include best-effort GPS (latitude/longitude) — the rider
+       * is typically still standing at the pickup/delivery point when they
+       * verify, so this feeds the same station-distance fraud check as the
+       * arrival endpoints. Never blocks verification if GPS is unavailable. */
+      verifyOtp: (orderId: number, purpose: 'pickup' | 'delivery', payload: VerifyOrderOtpPayload & Partial<GeoCoords>) =>
         http.request<VerifyOrderOtpResponse>(`/orders/${orderId}/otp/${purpose}/verify`, {
           method: 'POST',
           body: payload,
@@ -198,16 +232,46 @@ export function createResources(http: HttpClient) {
             idempotencyKey: generateIdempotencyKey(),
           }),
 
-        arrivedPickup: (orderId: number) =>
-          http.request<PartnerAssignment>(`/partner/assignments/${orderId}/arrived-pickup`, { method: 'POST' }),
+        /** `coords` is best-effort — a denied location permission on the
+         * partner app must never block the underlying action, so pass
+         * undefined/omit rather than failing when GPS isn't available. */
+        arrivedPickup: (orderId: number, coords?: GeoCoords) =>
+          http.request<PartnerAssignment>(`/partner/assignments/${orderId}/arrived-pickup`, {
+            method: 'POST',
+            body: coords,
+          }),
 
         /** Manual override — normally auto-fires after pickup OTP verify succeeds;
          * safe no-op if the order is already IN_TRANSIT. */
         startTransit: (orderId: number) =>
           http.request<PartnerAssignment>(`/partner/assignments/${orderId}/start-transit`, { method: 'POST' }),
 
-        arrivedDestination: (orderId: number) =>
-          http.request<PartnerAssignment>(`/partner/assignments/${orderId}/arrived-destination`, { method: 'POST' }),
+        arrivedDestination: (orderId: number, coords?: GeoCoords) =>
+          http.request<PartnerAssignment>(`/partner/assignments/${orderId}/arrived-destination`, {
+            method: 'POST',
+            body: coords,
+          }),
+
+        /** Regenerates the pickup/delivery OTP without ever revealing the code
+         * to the partner — the new code is sent to the sender/receiver and
+         * pushed to the customer app. Use when the customer says the code
+         * never arrived or expired. */
+        regenerateOtp: (orderId: number, purpose: 'pickup' | 'delivery') =>
+          http.request<RegenerateOrderOtpResponse>(`/partner/assignments/${orderId}/otp/${purpose}/regenerate`, {
+            method: 'POST',
+          }),
+
+        uploadPickupPhoto: (orderId: number, file: FormDataFile, coords?: GeoCoords) =>
+          http.request<PartnerAssignment>(`/partner/assignments/${orderId}/pickup-photo`, {
+            method: 'POST',
+            formData: { photo: file, ...geoCoordsToFormFields(coords) },
+          }),
+
+        uploadDeliveryPhoto: (orderId: number, file: FormDataFile, coords?: GeoCoords) =>
+          http.request<PartnerAssignment>(`/partner/assignments/${orderId}/delivery-photo`, {
+            method: 'POST',
+            formData: { photo: file, ...geoCoordsToFormFields(coords) },
+          }),
       },
 
       earnings: {
