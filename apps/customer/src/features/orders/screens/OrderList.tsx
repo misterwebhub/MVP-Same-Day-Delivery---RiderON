@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -9,6 +9,7 @@ import { apiClient } from '../../../services/httpClient';
 import { formatPaise } from '../../../utils/currency';
 import { formatDateLabel } from '../../../utils/date';
 import { TextField } from '../../../components/TextField';
+import { Icon } from '../../../components/Icon';
 import type { AppTabsParamList, RootStackParamList } from '../../../navigation/types';
 
 /** "19:00:00" -> "19:00" — schedule times come back with seconds, trimmed for display. */
@@ -79,6 +80,27 @@ export function OrderList({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Bookings</Text>
+        {/* Explicit refresh button — pull-to-refresh's drag gesture is unreliable
+         * (or entirely absent) on react-native-web with mouse/trackpad input, so
+         * this is the only reliable refresh path when testing in a browser. */}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Refresh bookings"
+          style={styles.refreshButton}
+          onPress={onRefresh}
+          disabled={refreshing || loading}
+          hitSlop={8}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={color.secondary} />
+          ) : (
+            <Icon name="refresh-outline" size={22} color={color.secondary} />
+          )}
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.searchRow}>
         <TextField value={search} onChangeText={setSearch} placeholder="Search by order ID" />
       </View>
@@ -131,6 +153,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: color.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+  },
+  headerTitle: {
+    ...typography.h1,
+    color: color.textPrimary,
+  },
+  refreshButton: {
+    padding: space[1],
   },
   searchRow: {
     paddingHorizontal: space[6],

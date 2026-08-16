@@ -8,6 +8,7 @@ import type { PartnerAssignment } from '@rideron/types';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
+import { Icon } from '../../../components/Icon';
 import { apiClient } from '../../../services/httpClient';
 import { formatDateLabel, formatTime } from '../../../utils/date';
 import { isPendingAccept, statusLabel } from '../../assignments/statusHelpers';
@@ -112,7 +113,34 @@ export function Rides({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Rides</Text>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>Ready to ride</Text>
+          <Text style={styles.title}>Rides</Text>
+        </View>
+        <View style={styles.headerActions}>
+          {/* Explicit refresh button — pull-to-refresh's drag gesture is unreliable
+           * (or entirely absent) on react-native-web with mouse/trackpad input, so
+           * this is the only reliable refresh path when testing in a browser. */}
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Refresh rides"
+            style={styles.refreshButton}
+            onPress={onRefresh}
+            disabled={refreshing || loading}
+            hitSlop={8}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={color.secondary} />
+            ) : (
+              <Icon name="refresh-outline" size={22} color={color.secondary} />
+            )}
+          </TouchableOpacity>
+          <View style={styles.headerIconBadge}>
+            <Icon name="bicycle" size={22} color={color.textInverse} />
+          </View>
+        </View>
+      </View>
 
       <View style={styles.searchRow}>
         <TextField value={search} onChangeText={setSearch} placeholder="Search by order ID" />
@@ -124,8 +152,9 @@ export function Rides({ navigation }: Props) {
           onPress={() => setSection('unassigned')}
           activeOpacity={0.8}
         >
+          <Icon name="albums-outline" size={15} color={section === 'unassigned' ? color.primaryDark : color.textSecondary} />
           <Text style={[styles.tabLabel, section === 'unassigned' && styles.tabLabelActive]}>
-            Unassigned Rides{unassignedList.length > 0 ? ` (${unassignedList.length})` : ''}
+            Unassigned{unassignedList.length > 0 ? ` (${unassignedList.length})` : ''}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -133,6 +162,7 @@ export function Rides({ navigation }: Props) {
           onPress={() => setSection('mine')}
           activeOpacity={0.8}
         >
+          <Icon name="checkmark-done-outline" size={15} color={section === 'mine' ? color.primaryDark : color.textSecondary} />
           <Text style={[styles.tabLabel, section === 'mine' && styles.tabLabelActive]}>My Rides</Text>
         </TouchableOpacity>
       </View>
@@ -149,6 +179,9 @@ export function Rides({ navigation }: Props) {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
           ListEmptyComponent={
             <View style={styles.empty}>
+              <View style={styles.emptyIconWrap}>
+                <Icon name={section === 'unassigned' ? 'search-outline' : 'cube-outline'} size={28} color={color.textSecondary} />
+              </View>
               <Text style={styles.emptyText}>
                 {error
                   ?? (query.length > 0
@@ -159,10 +192,13 @@ export function Rides({ navigation }: Props) {
               </Text>
             </View>
           }
-          renderItem={({ item }) =>
-            section === 'unassigned' ? (
+          renderItem={({ item }) => {
+            const statusColor = statusBadgeColor[item.status as keyof typeof statusBadgeColor] ?? color.info;
+            return section === 'unassigned' ? (
               <View style={styles.row}>
-                <View style={[styles.statusDot, { backgroundColor: statusBadgeColor[item.status as keyof typeof statusBadgeColor] ?? color.info }]} />
+                <View style={[styles.statusBadge, { backgroundColor: `${statusColor}1F` }]}>
+                  <Icon name="cube" size={18} color={statusColor} />
+                </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowRef}>{item.booking_reference}</Text>
                   <Text style={styles.rowRoute} numberOfLines={1}>
@@ -172,7 +208,7 @@ export function Rides({ navigation }: Props) {
                     {item.booking_date ? formatDateLabel(item.booking_date) : '—'}
                     {item.route_schedule ? ` • ${formatTime(item.route_schedule.departure_time)}` : ''}
                   </Text>
-                  <Text style={styles.rowStatus}>{statusLabel(item.status)}</Text>
+                  <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel(item.status)}</Text>
                 </View>
                 <Button
                   title="Accept"
@@ -183,7 +219,9 @@ export function Rides({ navigation }: Props) {
               </View>
             ) : (
               <TouchableOpacity style={styles.row} onPress={() => goToAssignment(item.id)} activeOpacity={0.85}>
-                <View style={[styles.statusDot, { backgroundColor: statusBadgeColor[item.status as keyof typeof statusBadgeColor] ?? color.info }]} />
+                <View style={[styles.statusBadge, { backgroundColor: `${statusColor}1F` }]}>
+                  <Icon name="cube" size={18} color={statusColor} />
+                </View>
                 <View style={styles.rowText}>
                   <Text style={styles.rowRef}>{item.booking_reference}</Text>
                   <Text style={styles.rowRoute} numberOfLines={1}>
@@ -193,11 +231,12 @@ export function Rides({ navigation }: Props) {
                     {item.booking_date ? formatDateLabel(item.booking_date) : '—'}
                     {item.route_schedule ? ` • ${formatTime(item.route_schedule.departure_time)}` : ''}
                   </Text>
-                  <Text style={styles.rowStatus}>{statusLabel(item.status)}</Text>
+                  <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel(item.status)}</Text>
                 </View>
+                <Icon name="chevron-forward" size={18} color={color.textSecondary} />
               </TouchableOpacity>
-            )
-          }
+            );
+          }}
         />
       )}
     </View>
@@ -214,11 +253,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space[6],
+    paddingTop: space[6],
+  },
+  greeting: {
+    ...typography.caption,
+    color: color.textSecondary,
+  },
   title: {
     ...typography.h1,
     color: color.textPrimary,
-    paddingHorizontal: space[6],
-    paddingTop: space[6],
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[3],
+  },
+  refreshButton: {
+    padding: space[1],
+  },
+  headerIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: color.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: color.shadow,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   searchRow: {
     paddingHorizontal: space[6],
@@ -232,6 +302,9 @@ const styles = StyleSheet.create({
     paddingBottom: space[2],
   },
   tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[1],
     paddingVertical: space[2],
     paddingHorizontal: space[4],
     borderRadius: radius.pill,
@@ -262,16 +335,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: color.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: color.border,
     padding: space[4],
     marginBottom: space[3],
+    shadowColor: color.shadow,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  statusDot: {
-    width: 10,
-    height: 10,
+  statusBadge: {
+    width: 38,
+    height: 38,
     borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: space[3],
   },
   rowText: {
@@ -294,7 +374,7 @@ const styles = StyleSheet.create({
   },
   rowStatus: {
     ...typography.caption,
-    color: color.textSecondary,
+    fontWeight: '700',
     marginTop: 2,
   },
   empty: {
@@ -302,9 +382,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: space[8],
   },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
+    backgroundColor: color.surface,
+    borderWidth: 1,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space[3],
+  },
   emptyText: {
     ...typography.body,
     color: color.textSecondary,
     textAlign: 'center',
+    paddingHorizontal: space[6],
   },
 });

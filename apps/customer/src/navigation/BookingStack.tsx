@@ -8,6 +8,7 @@ import { TimeSlot } from '../features/booking/screens/TimeSlot';
 import { BookingSummary } from '../features/booking/screens/BookingSummary';
 import { Payment } from '../features/booking/screens/Payment';
 import { Confirmation } from '../features/booking/screens/Confirmation';
+import { HomeButton } from '../components/HomeButton';
 import type { BookingStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<BookingStackParamList>();
@@ -32,6 +33,10 @@ export function BookingStack() {
         headerStyle: { backgroundColor: color.surface },
         headerTintColor: color.textPrimary,
         headerBackTitle: '',
+        // Abandoning the flow via Home should clear the draft (see HomeButton's
+        // resetBookingDraft doc comment) — set on every screen except Confirmation,
+        // where the booking is already done and the draft is cleared separately.
+        headerRight: () => <HomeButton resetBookingDraft />,
       }}
     >
       <Stack.Screen name="RouteSelect" component={RouteSelect} options={{ title: 'Select Route' }} />
@@ -43,7 +48,12 @@ export function BookingStack() {
       <Stack.Screen
         name="Confirmation"
         component={Confirmation}
-        options={{ title: 'Confirmed', headerBackVisible: false, gestureEnabled: false }}
+        options={{
+          title: 'Confirmed',
+          headerBackVisible: false,
+          gestureEnabled: false,
+          headerRight: () => <HomeButton />,
+        }}
       />
     </Stack.Navigator>
   );

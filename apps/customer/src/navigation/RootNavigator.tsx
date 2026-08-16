@@ -6,6 +6,7 @@ import { AppTabs } from './AppTabs';
 import { BookingStack } from './BookingStack';
 import { OrderDetails } from '../features/orders/screens/OrderDetails';
 import { BootSplash } from '../components/BootSplash';
+import { HomeButton } from '../components/HomeButton';
 import { useAuth } from '../hooks/useAuth';
 import { linking } from './linking';
 import type { RootStackParamList } from './types';
@@ -31,7 +32,11 @@ export function RootNavigator() {
           <>
             <Root.Screen name="Tabs" component={AppTabs} />
             <Root.Screen name="Booking" component={BookingStack} options={{ presentation: 'modal' }} />
-            <Root.Screen name="OrderDetails" component={OrderDetails} options={{ headerShown: true, title: 'Order' }} />
+            <Root.Screen
+              name="OrderDetails"
+              component={OrderDetails}
+              options={{ headerShown: true, title: 'Order', headerRight: () => <HomeButton /> }}
+            />
           </>
         )}
       </Root.Navigator>

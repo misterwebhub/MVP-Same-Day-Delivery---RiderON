@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, statusBadgeColor, typography, type StatusBadgeKey } from '@rideron/design-tokens';
 import type { Order, OrderStatus } from '@rideron/types';
@@ -10,6 +11,7 @@ import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { Icon } from '../../../components/Icon';
 import { ImageViewerModal } from '../../../components/ImageViewerModal';
+import { resetToHome } from '../../../components/HomeButton';
 import { formatPaise } from '../../../utils/currency';
 import { formatDateLabel } from '../../../utils/date';
 import { OtpResendCard } from '../components/OtpResendCard';
@@ -86,7 +88,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
  * info (see app/Http/Resources/OrderResource.php — no rider fields at all), so
  * this screen deliberately shows no rider name/photo/rating, only real data.
  */
-export function OrderDetails({ route }: Props) {
+export function OrderDetails({ route, navigation }: Props) {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,20 +98,47 @@ export function OrderDetails({ route }: Props) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
 
+  // Tracks the previously-seen status so the "just completed" Alert below only
+  // fires once, on the transition into COMPLETED — not every poll/refresh
+  // while an already-completed order is being reviewed from Orders history.
+  const previousStatusRef = useRef<OrderStatus | null>(null);
+  const announcedCompletionRef = useRef(false);
+
   const load = useCallback(async () => {
     try {
       const result = await apiClient.orders.get(orderId);
       setOrder(result);
       setError(null);
+
+      const previousStatus = previousStatusRef.current;
+      if (previousStatus !== null && previousStatus !== 'COMPLETED' && result.status === 'COMPLETED' && !announcedCompletionRef.current) {
+        announcedCompletionRef.current = true;
+        Alert.alert('Delivery completed!', 'Your parcel has been delivered successfully.', [
+          { text: 'Go to Home', onPress: () => resetToHome(navigation) },
+        ]);
+      }
+      previousStatusRef.current = result.status;
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : 'Could not load this order.');
     }
-  }, [orderId]);
+  }, [orderId, navigation]);
 
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Live status while this screen is open — a rider marking the order
+  // delivered/completed on their device should reach the customer here
+  // without requiring a manual pull-to-refresh first.
+  useFocusEffect(
+    useCallback(() => {
+      const interval = setInterval(() => {
+        if (AppState.currentState === 'active') load();
+      }, 15000);
+      return () => clearInterval(interval);
+    }, [load]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

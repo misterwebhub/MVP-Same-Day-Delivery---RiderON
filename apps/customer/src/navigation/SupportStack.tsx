@@ -5,6 +5,7 @@ import { SupportHome } from '../features/support/screens/SupportHome';
 import { ReportIssue } from '../features/support/screens/ReportIssue';
 import { TicketDetail } from '../features/support/screens/TicketDetail';
 import { Faq } from '../features/support/screens/Faq';
+import { HomeButton } from '../components/HomeButton';
 import type { SupportStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<SupportStackParamList>();
@@ -17,6 +18,7 @@ export function SupportStack() {
         headerStyle: { backgroundColor: color.secondary },
         headerTintColor: color.textInverse,
         headerTitleStyle: { color: color.textInverse },
+        headerRight: () => <HomeButton tintColor={color.textInverse} />,
       }}
     >
       <Stack.Screen name="SupportHome" component={SupportHome} options={{ title: 'Support' }} />
