@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { Profile } from '@rideron/types';
@@ -8,6 +8,7 @@ import { apiClient } from '../../../services/httpClient';
 import { Button } from '../../../components/Button';
 import { Icon, IconName } from '../../../components/Icon';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
 import { useAuth } from '../../../hooks/useAuth';
 import type { ProfileStackParamList } from '../../../navigation/types';
 import { confirmAction } from '../../../utils/confirm';
@@ -27,6 +28,7 @@ export function ProfileHome({ navigation }: Props) {
   const { signOut } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
@@ -36,21 +38,26 @@ export function ProfileHome({ navigation }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    setLoading(true);
     setError(null);
-    apiClient.profile
+    return apiClient.profile
       .get()
       .then((result) => {
         setProfile(result);
         setName(result.name ?? '');
         setEmail(result.email ?? '');
       })
-      .catch((e) => setError(e instanceof ApiClientError ? e.message : 'Could not load your profile.'))
-      .finally(() => setLoading(false));
+      .catch((e) => setError(e instanceof ApiClientError ? e.message : 'Could not load your profile.'));
   }, []);
 
   useEffect(() => {
-    load();
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   }, [load]);
 
   const onSave = async () => {
@@ -75,7 +82,11 @@ export function ProfileHome({ navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardSafeScreen style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
+      >
       {loading ? <ActivityIndicator color={color.primary} style={styles.loader} /> : null}
 
       {!loading && error && !profile ? (
@@ -147,7 +158,8 @@ export function ProfileHome({ navigation }: Props) {
       ) : null}
 
       {!loading && profile ? <Button title="Log out" variant="secondary" onPress={onLogout} style={styles.logoutButton} /> : null}
-    </ScrollView>
+      </ScrollView>
+    </KeyboardSafeScreen>
   );
 }
 

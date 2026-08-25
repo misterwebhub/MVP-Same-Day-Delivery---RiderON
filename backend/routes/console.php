@@ -9,3 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('app:purge-stale-activity-log-geo')->daily();
+
+Schedule::command('app:auto-complete-deliveries')->everyFiveMinutes()->withoutOverlapping();

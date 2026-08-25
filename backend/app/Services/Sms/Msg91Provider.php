@@ -48,6 +48,11 @@ class Msg91Provider implements SmsProvider
         }
     }
 
+    public function sendOtp(string $toPhone, string $otp, string $purpose): SmsSendResult
+    {
+        return $this->send($toPhone, "Your RiderON {$purpose} OTP is {$otp}. Do not share it with anyone.");
+    }
+
     private function normalizePhone(string $phone): string
     {
         $digits = preg_replace('/\D/', '', $phone) ?? '';

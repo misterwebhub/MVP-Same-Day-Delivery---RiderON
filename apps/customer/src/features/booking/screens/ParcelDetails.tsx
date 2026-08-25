@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
@@ -9,6 +9,9 @@ import { Chip } from '../../../components/Chip';
 import { Icon } from '../../../components/Icon';
 import { StepProgress } from '../../../components/StepProgress';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
+import { compressImageForUpload } from '../../../utils/imageCompression';
 import { useBookingDraft } from '../BookingDraftContext';
 import type { BookingStackParamList } from '../../../navigation/types';
 
@@ -30,6 +33,8 @@ export function ParcelDetails({ navigation }: Props) {
   const [photoUri, setPhotoUri] = useState<string | null>(draft.parcelPhotoUri);
   const [error, setError] = useState<string | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [compressing, setCompressing] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   /** A photo is required — it's what the rider matches against at pickup and
    * gives support a real reference if a parcel is ever disputed. Offer both
@@ -41,6 +46,28 @@ export function ParcelDetails({ navigation }: Props) {
     setPickerVisible(true);
   };
 
+  /** Resizes+compresses the picked asset so it fits under the backend's 5 MB
+   * upload limit before it's stored in the draft — see imageCompression.ts.
+   * A raw camera/library asset (especially on modern phones) is routinely
+   * several MB, well past that limit, which otherwise surfaces at Confirm &
+   * Pay time as "The photo field must not be greater than 5120 kilobytes." */
+  const acceptAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    setCompressing(true);
+    try {
+      const compressedUri = await compressImageForUpload(asset.uri, asset.width);
+      setPhotoUri(compressedUri);
+      setError(null);
+    } catch {
+      // Compression failing (corrupt image, unsupported format) shouldn't block the
+      // flow entirely — fall back to the original asset; the backend's own size/type
+      // validation still applies and will surface a clear error if it's too large.
+      setPhotoUri(asset.uri);
+      setError(null);
+    } finally {
+      setCompressing(false);
+    }
+  };
+
   const captureFromCamera = async () => {
     setPickerVisible(false);
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -50,8 +77,7 @@ export function ParcelDetails({ navigation }: Props) {
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.6 });
     if (result.canceled || !result.assets?.[0]) return;
-    setPhotoUri(result.assets[0].uri);
-    setError(null);
+    await acceptAsset(result.assets[0]);
   };
 
   const captureFromLibrary = async () => {
@@ -63,12 +89,15 @@ export function ParcelDetails({ navigation }: Props) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ImagePicker.MediaTypeOptions.Images });
     if (result.canceled || !result.assets?.[0]) return;
-    setPhotoUri(result.assets[0].uri);
-    setError(null);
+    await acceptAsset(result.assets[0]);
   };
 
   const onContinue = () => {
     const declaredRupees = Number(declaredValue);
+    if (compressing) {
+      setError('Still processing your photo — one moment.');
+      return;
+    }
     if (!weightSlab) {
       setError('Choose a weight range.');
       return;
@@ -98,7 +127,7 @@ export function ParcelDetails({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={2} total={6} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionLabel}>What are you sending?</Text>
@@ -147,7 +176,12 @@ export function ParcelDetails({ navigation }: Props) {
 
         <Text style={styles.sectionLabel}>Photo of your parcel</Text>
         <Text style={styles.photoHint}>Required — helps our rider confirm the right parcel at pickup.</Text>
-        {photoUri ? (
+        {compressing ? (
+          <View style={styles.photoAddBox}>
+            <ActivityIndicator color={color.primary} />
+            <Text style={styles.photoAddText}>Processing photo…</Text>
+          </View>
+        ) : photoUri ? (
           <TouchableOpacity style={styles.photoPreviewWrap} activeOpacity={0.85} onPress={onAddPhoto}>
             <Image source={{ uri: photoUri }} style={styles.photoPreview} />
             <View style={styles.photoRetakeBadge}>
@@ -194,10 +228,10 @@ export function ParcelDetails({ navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-      <View style={styles.footer}>
-        <Button title="Continue" onPress={onContinue} />
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
+        <Button title="Continue" onPress={onContinue} disabled={compressing} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

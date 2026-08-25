@@ -267,7 +267,7 @@ class OtpService
 
     private function dispatchSms(string $phone, string $purpose, string $otp): void
     {
-        $this->smsProvider->send($phone, "Your RiderON {$purpose} OTP is {$otp}. Do not share it with anyone.");
+        $this->smsProvider->sendOtp($phone, $otp, $purpose);
     }
 
     private function log(

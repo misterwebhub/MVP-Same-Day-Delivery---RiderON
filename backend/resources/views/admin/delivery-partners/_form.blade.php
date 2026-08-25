@@ -13,9 +13,24 @@
     ];
 @endphp
 
-<div>
+@if ($p === null)
+    {{-- Only offered on create: editing a partner never changes which login
+         it's attached to, so the new-user fields only make sense here. --}}
+    <div class="flex items-center gap-4 text-caption text-text-secondary">
+        <label class="flex items-center gap-2">
+            <input type="radio" name="create_new_user" value="0" onchange="document.getElementById('existing-user-fields').classList.remove('hidden'); document.getElementById('new-user-fields').classList.add('hidden');" @checked(! old('create_new_user', false))>
+            Attach to an existing user
+        </label>
+        <label class="flex items-center gap-2">
+            <input type="radio" name="create_new_user" value="1" onchange="document.getElementById('existing-user-fields').classList.add('hidden'); document.getElementById('new-user-fields').classList.remove('hidden');" @checked(old('create_new_user', false))>
+            Create a brand-new rider login
+        </label>
+    </div>
+@endif
+
+<div id="existing-user-fields" class="{{ $p === null && old('create_new_user', false) ? 'hidden' : '' }}">
     <label for="user_id" class="form-label">Partner user account</label>
-    <select id="user_id" name="user_id" required class="form-input">
+    <select id="user_id" name="user_id" class="form-input">
         <option value="">Select a user</option>
         @foreach ($users as $user)
             <option value="{{ $user->id }}" @selected((string) old('user_id', $p?->user_id) === (string) $user->id)>
@@ -24,6 +39,24 @@
         @endforeach
     </select>
 </div>
+
+@if ($p === null)
+    <div id="new-user-fields" class="space-y-4 {{ old('create_new_user', false) ? '' : 'hidden' }}">
+        <div>
+            <label for="new_user_name" class="form-label">Rider name</label>
+            <input id="new_user_name" type="text" name="new_user_name" value="{{ old('new_user_name') }}" class="form-input">
+        </div>
+        <div>
+            <label for="new_user_phone" class="form-label">Rider mobile number</label>
+            <input id="new_user_phone" type="text" name="new_user_phone" value="{{ old('new_user_phone') }}" placeholder="9876543210" class="form-input">
+        </div>
+        <div>
+            <label for="new_user_password" class="form-label">Rider password</label>
+            <input id="new_user_password" type="text" name="new_user_password" value="{{ old('new_user_password') }}" placeholder="Min. 8 characters" class="form-input">
+            <p class="text-caption text-text-secondary mt-1">Share this password with the rider directly — it won't be shown again.</p>
+        </div>
+    </div>
+@endif
 
 <div>
     <label for="partner_code" class="form-label">Partner code</label>

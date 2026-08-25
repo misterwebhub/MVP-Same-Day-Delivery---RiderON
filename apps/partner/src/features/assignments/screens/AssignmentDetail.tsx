@@ -8,7 +8,9 @@ import type { CallTarget, PartnerAssignment } from '@rideron/types';
 import { ApiClientError, type GeoCoords } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
 import { apiClient } from '../../../services/httpClient';
+import { compressImageForUpload } from '../../../utils/imageCompression';
 import { isPendingAccept, statusLabel } from '../statusHelpers';
 import type { RootStackParamList } from '../../../navigation/types';
 
@@ -163,10 +165,21 @@ export function AssignmentDetail({ route }: Props) {
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset = result.assets[0];
-    const file = { uri: asset.uri, name: `${purpose}-proof.jpg`, type: 'image/jpeg' };
 
     setActionLoading(true);
     try {
+      // Resize+compress before upload — a raw camera capture is routinely several MB,
+      // well past the backend's 5 MB proof-photo limit (`max:5120`), which the
+      // picker's `quality: 0.6` option alone doesn't reliably stay under since it
+      // only affects JPEG quality, not pixel dimensions. See imageCompression.ts.
+      let uploadUri = asset.uri;
+      try {
+        uploadUri = await compressImageForUpload(asset.uri, asset.width);
+      } catch {
+        // Fall back to the original capture — the backend's own validation still
+        // applies and will surface a clear error if it's too large.
+      }
+      const file = { uri: uploadUri, name: `${purpose}-proof.jpg`, type: 'image/jpeg' };
       const coords = await getBestEffortCoords();
       const updated = purpose === 'pickup'
         ? await apiClient.partner.assignments.uploadPickupPhoto(orderId, file, coords)
@@ -203,11 +216,11 @@ export function AssignmentDetail({ route }: Props) {
   const done = DONE_STATUSES.includes(status);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
-    >
+    <KeyboardSafeScreen style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
+      >
       <View style={styles.headerRow}>
         <Text style={styles.ref}>{assignment.booking_reference}</Text>
         <View style={[styles.statusPill, { backgroundColor: statusBadgeColor[status as keyof typeof statusBadgeColor] ?? color.info }]}>
@@ -363,7 +376,8 @@ export function AssignmentDetail({ route }: Props) {
 
         {done ? <Text style={styles.doneText}>This delivery is {statusLabel(status).toLowerCase()}.</Text> : null}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardSafeScreen>
   );
 }
 

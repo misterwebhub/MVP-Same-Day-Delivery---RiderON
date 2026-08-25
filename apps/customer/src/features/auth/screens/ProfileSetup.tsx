@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { color, space, typography } from '@rideron/design-tokens';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { apiClient } from '../../../services/httpClient';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiClientError } from '@rideron/api-client';
@@ -16,6 +18,7 @@ export function ProfileSetup() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   const onSubmit = async () => {
     if (name.trim().length === 0) {
@@ -46,7 +49,7 @@ export function ProfileSetup() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Tell us about you</Text>
         <Text style={styles.subtitle}>Just your name to get started — email is optional.</Text>
@@ -67,10 +70,10 @@ export function ProfileSetup() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Continue" onPress={onSubmit} loading={loading} disabled={name.trim().length === 0} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

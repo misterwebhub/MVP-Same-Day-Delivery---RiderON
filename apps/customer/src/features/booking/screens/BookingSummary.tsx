@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
-import { PARCEL_TYPE_LABELS, WEIGHT_SLAB_LABELS, type ProhibitedItem } from '@rideron/types';
+import { PARCEL_TYPE_LABELS, WEIGHT_SLAB_LABELS, type Order, type ProhibitedItem } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { Checkbox } from '../../../components/Checkbox';
 import { ImageViewerModal } from '../../../components/ImageViewerModal';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { StepProgress } from '../../../components/StepProgress';
 import { formatPaise } from '../../../utils/currency';
 import { formatDateLabel } from '../../../utils/date';
@@ -33,6 +35,7 @@ export function BookingSummary({ navigation }: Props) {
   const [prohibitedItems, setProhibitedItems] = useState<ProhibitedItem[]>([]);
   const [showProhibited, setShowProhibited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -100,19 +103,35 @@ export function BookingSummary({ navigation }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      const order = await apiClient.orders.create({
-        quote_token: quote.quote_token,
-        booking_date: draft.bookingDate,
-        sender_name: sender.name,
-        sender_phone: sender.phone,
-        sender_landmark: sender.landmark || null,
-        receiver_name: receiver.name,
-        receiver_phone: receiver.phone,
-        receiver_landmark: receiver.landmark || null,
-        parcel_type: draft.parcelType,
-        special_instructions: draft.specialInstructions || null,
-        prohibited_items_accepted: true,
-      });
+      // Resume a previous attempt instead of creating a duplicate order: if an
+      // earlier tap got as far as creating the order but failed on the photo
+      // upload (or the screen/app was killed before reaching Payment), the
+      // order id is still sitting in the persisted draft. orders.create()
+      // mints a fresh Idempotency-Key on every call, so re-calling it here
+      // would NOT be deduped by the backend — it'd create a second order.
+      let order: Order;
+      if (draft.pendingOrder) {
+        order = await apiClient.orders.get(draft.pendingOrder.id);
+      } else {
+        order = await apiClient.orders.create({
+          quote_token: quote.quote_token,
+          booking_date: draft.bookingDate,
+          sender_name: sender.name,
+          sender_phone: sender.phone,
+          sender_landmark: sender.landmark || null,
+          receiver_name: receiver.name,
+          receiver_phone: receiver.phone,
+          receiver_landmark: receiver.landmark || null,
+          parcel_type: draft.parcelType,
+          special_instructions: draft.specialInstructions || null,
+          prohibited_items_accepted: true,
+        });
+        if (!order.payment) {
+          setError('Order created but no payment was set up — please contact support.');
+          return;
+        }
+        update({ pendingOrder: { id: order.id, paymentId: order.payment.id } });
+      }
       if (!order.payment) {
         setError('Order created but no payment was set up — please contact support.');
         return;
@@ -122,8 +141,10 @@ export function BookingSummary({ navigation }: Props) {
       // needs an existing order/parcel, so the actual upload only happens now.
       // The backend also rejects payment verification without one (defense in
       // depth), but we still surface a clear error here rather than letting
-      // the customer discover it on the Payment screen.
-      if (draft.parcelPhotoUri) {
+      // the customer discover it on the Payment screen. If the order already
+      // has a photo (e.g. this is a retry and the earlier upload actually did
+      // go through before the error surfaced), skip re-uploading it.
+      if (draft.parcelPhotoUri && order.parcel?.photos.length === 0) {
         try {
           await apiClient.orders.uploadParcelPhoto(order.id, {
             uri: draft.parcelPhotoUri,
@@ -145,7 +166,7 @@ export function BookingSummary({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={5} total={6} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>
@@ -232,7 +253,7 @@ export function BookingSummary({ navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button
           title="Confirm & Pay"
           onPress={onConfirm}
@@ -241,7 +262,7 @@ export function BookingSummary({ navigation }: Props) {
         />
       </View>
       <ImageViewerModal uri={previewUri} onClose={() => setPreviewUri(null)} />
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

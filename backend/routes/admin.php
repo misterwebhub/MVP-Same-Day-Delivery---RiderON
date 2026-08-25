@@ -56,6 +56,7 @@ Route::middleware('admin')->group(function () {
 
     Route::post('delivery-partners/{delivery_partner}/restore', [DeliveryPartnerController::class, 'restore'])->name('delivery-partners.restore');
     Route::delete('delivery-partners/{delivery_partner}/force-delete', [DeliveryPartnerController::class, 'forceDelete'])->name('delivery-partners.force-delete');
+    Route::post('delivery-partners/{delivery_partner}/reset-password', [DeliveryPartnerController::class, 'resetPassword'])->name('delivery-partners.reset-password');
     Route::resource('delivery-partners', DeliveryPartnerController::class)->except(['show']);
 
     Route::get('orders', [OrderController::class, 'index'])->name('orders.index');

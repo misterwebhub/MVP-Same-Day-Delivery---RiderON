@@ -64,6 +64,12 @@ return [
         'template_id' => env('MSG91_TEMPLATE_ID'),
     ],
 
+    'hanuotp' => [
+        'api_key' => env('HANUOTP_API_KEY'),
+        'base_url' => env('HANUOTP_BASE_URL', 'https://api.hanuotp.in/sms-otp.php'),
+        'template_id' => env('HANUOTP_TEMPLATE_ID', 'default'),
+    ],
+
     'fcm' => [
         'project_id' => env('FCM_PROJECT_ID'),
         'credentials_path' => env('FCM_CREDENTIALS_PATH'),

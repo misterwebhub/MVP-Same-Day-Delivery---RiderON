@@ -17,9 +17,23 @@ class DeliveryPartnerRequest extends FormRequest
     public function rules(): array
     {
         $partnerId = $this->route('delivery_partner')?->id;
+        $creatingNewUser = $this->boolean('create_new_user');
 
         return [
-            'user_id' => ['required', 'integer', 'exists:users,id'],
+            // Creating: either pick an existing partner-role user, or fill in
+            // the name/phone/password fields below to create one on the fly
+            // — this admin panel previously had no way to originate a rider
+            // login at all, only attach a partner profile to a user that
+            // already existed some other way.
+            'user_id' => [$creatingNewUser ? 'prohibited' : 'required', 'nullable', 'integer', 'exists:users,id'],
+            'new_user_name' => [$creatingNewUser ? 'required' : 'prohibited', 'string', 'max:255'],
+            'new_user_phone' => [
+                $creatingNewUser ? 'required' : 'prohibited',
+                'string',
+                'regex:/^[6-9]\d{9}$/',
+                Rule::unique('users', 'phone'),
+            ],
+            'new_user_password' => [$creatingNewUser ? 'required' : 'prohibited', 'string', 'min:8'],
             'partner_code' => ['required', 'string', 'max:20', Rule::unique('delivery_partners', 'partner_code')->ignore($partnerId)],
             'photo_url' => ['nullable', 'string', 'max:255'],
             'vehicle_type' => ['required', Rule::in([
@@ -45,6 +59,7 @@ class DeliveryPartnerRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'create_new_user' => $this->boolean('create_new_user'),
             'is_active' => $this->boolean('is_active'),
             'current_home_city_id' => $this->input('current_home_city_id') !== '' ? $this->input('current_home_city_id') : null,
         ]);

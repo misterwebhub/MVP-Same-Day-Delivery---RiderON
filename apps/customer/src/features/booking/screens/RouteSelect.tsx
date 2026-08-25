@@ -7,6 +7,8 @@ import { apiClient } from '../../../services/httpClient';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Icon } from '../../../components/Icon';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { StepProgress } from '../../../components/StepProgress';
 import { formatPaise } from '../../../utils/currency';
 import { useBookingDraft } from '../BookingDraftContext';
@@ -30,6 +32,7 @@ export function RouteSelect({ navigation }: Props) {
   const [destinationStation, setDestinationStation] = useState<Station | null>(draft.destinationStation);
   const [destinationCity, setDestinationCity] = useState<City | null>(draft.destinationCity);
   const [popularRoutes, setPopularRoutes] = useState<RouteSummary[]>([]);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   const { route, resolving, error } = useRouteResolution(originStation, destinationStation);
 
@@ -70,7 +73,7 @@ export function RouteSelect({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={1} total={6} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.heading}>Where's it going?</Text>
@@ -118,10 +121,10 @@ export function RouteSelect({ navigation }: Props) {
           </View>
         ) : null}
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Continue" onPress={onContinue} disabled={!route} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

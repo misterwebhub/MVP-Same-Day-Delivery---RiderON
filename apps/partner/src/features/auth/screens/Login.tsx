@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { color, space, typography } from '@rideron/design-tokens';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { apiClient } from '../../../services/httpClient';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiClientError } from '@rideron/api-client';
@@ -22,6 +24,7 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   const handlePhoneChange = (text: string) => {
     setPhone(text.replace(/[^0-9]/g, ''));
@@ -54,7 +57,7 @@ export function Login() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>RiderON Partner</Text>
         <Text style={styles.subtitle}>Sign in with your registered mobile number and password.</Text>
@@ -85,7 +88,7 @@ export function Login() {
         error={error}
       />
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button
           title="Sign In"
           onPress={onSubmit}
@@ -93,7 +96,7 @@ export function Login() {
           disabled={phone.length !== 10 || password.length === 0}
         />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

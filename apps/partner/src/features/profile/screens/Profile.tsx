@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { Profile as ProfileType } from '@rideron/types';
 import { ApiClientError } from '@rideron/api-client';
@@ -7,6 +7,7 @@ import { Button } from '../../../components/Button';
 import { Icon } from '../../../components/Icon';
 import { apiClient } from '../../../services/httpClient';
 import { useAuth } from '../../../hooks/useAuth';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 
 /** First letter of each of up to the first two words — e.g. "Ravi Kumar" -> "RK",
  * falling back to a generic rider glyph while the name is still loading. */
@@ -25,23 +26,33 @@ export function Profile() {
   const { signOut } = useAuth();
   const [profile, setProfile] = useState<ProfileType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
+
+  const load = useCallback(() => {
+    return apiClient.profile
+      .get()
+      .then((result) => setProfile(result))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    apiClient.profile
-      .get()
-      .then((result) => {
-        if (!cancelled) setProfile(result);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    setLoading(true);
+    load().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   const onSignOut = () => {
     Alert.alert('Sign out?', 'You will need to sign in again to receive assignments.', [
@@ -72,7 +83,11 @@ export function Profile() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
+    >
       <Text style={styles.title}>Profile</Text>
 
       <View style={styles.card}>
@@ -94,10 +109,10 @@ export function Profile() {
         </View>
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Sign out" variant="secondary" onPress={onSignOut} loading={signingOut} />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -105,7 +120,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: color.background,
+  },
+  content: {
     padding: space[6],
+    flexGrow: 1,
   },
   centered: {
     flex: 1,

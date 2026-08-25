@@ -6,6 +6,8 @@ import type { Order } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { StepProgress } from '../../../components/StepProgress';
 import { formatPaise } from '../../../utils/currency';
 import { useBookingDraft } from '../BookingDraftContext';
@@ -29,6 +31,7 @@ export function Payment({ route, navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +76,7 @@ export function Payment({ route, navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={6} total={6} />
       <ScrollView contentContainerStyle={styles.content}>
         {loading ? <ActivityIndicator color={color.primary} style={styles.loader} /> : null}
@@ -93,14 +96,14 @@ export function Payment({ route, navigation }: Props) {
         {error && order ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
       {order ? (
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
           <Button title={`Pay ${formatPaise(order.total_amount_paise)}`} onPress={() => pay(false)} loading={paying} />
           <Text style={styles.failureLink} onPress={() => (paying ? undefined : pay(true))}>
             Simulate a failed payment (test)
           </Text>
         </View>
       ) : null}
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

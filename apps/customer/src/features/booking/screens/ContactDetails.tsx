@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, space, typography } from '@rideron/design-tokens';
 import { Button } from '../../../components/Button';
 import { StepProgress } from '../../../components/StepProgress';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { useBookingDraft } from '../BookingDraftContext';
+import { apiClient } from '../../../services/httpClient';
 import type { BookingStackParamList } from '../../../navigation/types';
 
 type Props = NativeStackScreenProps<BookingStackParamList, 'ContactDetails'>;
@@ -24,6 +27,29 @@ export function ContactDetails({ navigation }: Props) {
   const [receiverPhone, setReceiverPhone] = useState(draft.receiver.phone);
   const [receiverLandmark, setReceiverLandmark] = useState(draft.receiver.landmark);
   const [error, setError] = useState<string | null>(null);
+  const bottomPadding = useSafeBottomPadding(space[6]);
+
+  // Auto-fill sender name/mobile from the logged-in user's own profile, once,
+  // only if the fields are still empty (e.g. first time through this step —
+  // don't clobber anything already typed or a previously-saved draft, since
+  // the sender field remains editable in case someone books on another
+  // person's behalf).
+  const didAutofill = useRef(false);
+  useEffect(() => {
+    if (didAutofill.current) return;
+    if (senderName.trim().length > 0 && senderPhone.trim().length > 0) return;
+    didAutofill.current = true;
+    apiClient.profile
+      .get()
+      .then((profile) => {
+        setSenderName((current) => (current.trim().length > 0 ? current : profile.name ?? current));
+        setSenderPhone((current) => (current.trim().length > 0 ? current : profile.phone ?? current));
+      })
+      .catch(() => {
+        // Silently ignore — sender fields just stay manual/blank, no worse than before.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onContinue = () => {
     if (senderName.trim().length === 0) {
@@ -51,7 +77,7 @@ export function ContactDetails({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={3} total={6} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionTitle}>Sender</Text>
@@ -96,10 +122,10 @@ export function ContactDetails({ navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Continue" onPress={onContinue} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

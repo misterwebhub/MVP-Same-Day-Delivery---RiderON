@@ -33,6 +33,15 @@ export interface BookingDraft {
   receiver: BookingPartyDraft;
   quote: PricingQuoteResponse | null;
   prohibitedItemsAccepted: boolean;
+  /** Set the moment orders.create() succeeds in BookingSummary's onConfirm,
+   * cleared once payment actually succeeds (Payment.tsx's pay() calls
+   * reset()). Persisted here — not component state — so that retapping
+   * Confirm & Pay after a later step fails (e.g. the parcel photo upload),
+   * or the screen remounting / the app restarting mid-flow, resumes against
+   * the same order instead of calling orders.create() again and minting a
+   * duplicate. orders.create() generates a fresh Idempotency-Key per call,
+   * so the backend can't dedupe repeat taps for us — this has to happen here. */
+  pendingOrder: { id: number; paymentId: number } | null;
 }
 
 const INITIAL_DRAFT: BookingDraft = {
@@ -53,6 +62,7 @@ const INITIAL_DRAFT: BookingDraft = {
   receiver: { name: '', phone: '', landmark: '' },
   quote: null,
   prohibitedItemsAccepted: false,
+  pendingOrder: null,
 };
 
 const STORAGE_KEY = 'rideron.bookingDraft';

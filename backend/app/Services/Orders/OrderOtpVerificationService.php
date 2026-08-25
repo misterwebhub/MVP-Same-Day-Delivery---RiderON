@@ -189,6 +189,7 @@ class OrderOtpVerificationService
             $spec['target'],
             OrderStatusHistory::ACTOR_PARTNER,
             $partner->user_id,
+            $spec['target'] === OrderStatus::DELIVERED ? ['delivered_at' => now()] : [],
         );
 
         $latitude = $request->input('latitude') !== null ? (float) $request->input('latitude') : null;

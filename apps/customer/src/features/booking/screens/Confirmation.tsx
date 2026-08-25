@@ -5,6 +5,7 @@ import { color, space, typography } from '@rideron/design-tokens';
 import type { Order } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { Button } from '../../../components/Button';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { OtpResendCard } from '../../orders/components/OtpResendCard';
 import type { BookingStackParamList } from '../../../navigation/types';
 
@@ -20,6 +21,7 @@ export function Confirmation({ route, navigation }: Props) {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   useEffect(() => {
     apiClient.orders
@@ -62,7 +64,7 @@ export function Confirmation({ route, navigation }: Props) {
           whatsappShareLabel="Share receiver OTP via WhatsApp"
         />
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Track this order" onPress={goToTracking} />
         <Button title="Done" variant="secondary" onPress={done} style={styles.doneButton} />
       </View>

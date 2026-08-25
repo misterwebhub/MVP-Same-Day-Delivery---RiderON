@@ -2,7 +2,7 @@ export * from './errors';
 export * from './tokenStorage';
 export * from './idempotency';
 export { HttpClient } from './httpClient';
-export type { ApiClientOptions, RequestOptions, FormDataFile } from './httpClient';
+export type { ApiClientOptions, RequestOptions, FormDataFile, UploadFileParams } from './httpClient';
 export { createResources } from './resources';
 export type { ApiResources, GeoCoords } from './resources';
 

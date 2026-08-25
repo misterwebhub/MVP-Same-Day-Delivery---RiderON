@@ -6,6 +6,8 @@ import type { RouteScheduleAvailability } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { StepProgress } from '../../../components/StepProgress';
 import { formatPaise } from '../../../utils/currency';
 import { toYMD, nextDays, WEEKDAYS, MONTHS } from '../../../utils/date';
@@ -24,6 +26,7 @@ export function TimeSlot({ navigation }: Props) {
   const [selectedSchedule, setSelectedSchedule] = useState<RouteScheduleAvailability | null>(draft.schedule);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   const routeId = draft.route?.id;
 
@@ -59,7 +62,7 @@ export function TimeSlot({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={4} total={6} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionLabel}>Pickup date</Text>
@@ -111,10 +114,10 @@ export function TimeSlot({ navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Continue" onPress={onContinue} disabled={!selectedSchedule} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 
