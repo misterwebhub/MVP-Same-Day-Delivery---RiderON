@@ -6,6 +6,8 @@ import { AppTabs } from './AppTabs';
 import { AssignmentDetail } from '../features/assignments/screens/AssignmentDetail';
 import { BootSplash } from '../components/BootSplash';
 import { useAuth } from '../hooks/useAuth';
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import { navigationRef } from './navigationRef';
 import type { RootStackParamList } from './types';
 
 const Root = createNativeStackNavigator<RootStackParamList>();
@@ -20,8 +22,13 @@ const Root = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { status } = useAuth();
 
+  // Registers the device's Expo push token (once logged in) and wires
+  // notification-tap navigation — see hooks/usePushNotifications.ts. No-op
+  // while unauthenticated/loading.
+  usePushNotifications(status === 'authenticated');
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Root.Navigator screenOptions={{ headerShown: false }}>
         {status === 'loading' && <Root.Screen name="Loading" component={BootSplash} />}
         {status === 'unauthenticated' && <Root.Screen name="Auth" component={AuthStack} />}

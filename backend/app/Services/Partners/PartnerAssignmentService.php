@@ -8,15 +8,17 @@ use App\Models\Order;
 use App\Models\OrderActivityLog;
 use App\Services\Activity\ActivityLogger;
 use App\Services\Notifications\NotificationService;
+use Illuminate\Support\Collection;
 
 /**
- * Matches a candidate delivery partner to an order sitting in
- * RIDER_ASSIGNMENT_PENDING (docs/06). This only sets `orders.partner_id` —
- * the order stays in RIDER_ASSIGNMENT_PENDING until the partner explicitly
- * accepts via POST /partner/assignments/{id}/accept. If no candidate is
- * found, the order is left unassigned (partner_id null) rather than faking
- * a match, per docs/09's "rider unavailable" edge case: honest
- * "finding a delivery partner" state, visible to admin for manual assignment.
+ * Broadcasts a newly-booked order to every eligible delivery partner instead
+ * of auto-assigning one. Per explicit product direction: no partner is
+ * silently pre-selected — the order stays unassigned (`partner_id` null,
+ * status RIDER_ASSIGNMENT_PENDING) and visible in every eligible partner's
+ * "Unassigned" pool (PartnerAssignmentController::unassigned()) until
+ * whoever accepts first claims it via POST /partner/assignments/{id}/accept
+ * (an atomic `whereNull('partner_id')` update — first tap wins, everyone
+ * else gets a 409).
  *
  * A partner travels a scheduled train/bus route and can carry multiple
  * parcels on the same trip, so having another live order on the same
@@ -38,43 +40,53 @@ class PartnerAssignmentService
     ) {
     }
 
-    public function attemptAssignment(Order $order): ?DeliveryPartner
+    /**
+     * @return Collection<int, DeliveryPartner> partners notified
+     */
+    public function attemptAssignment(Order $order): Collection
     {
         $order->loadMissing('route.originStation', 'route.destinationStation');
         $originCityId = $order->route->originStation->city_id;
         $destinationCityId = $order->route->destinationStation->city_id;
 
-        $partner = DeliveryPartner::query()
+        $partners = DeliveryPartner::query()
             ->where('is_active', true)
             ->where('verification_status', DeliveryPartner::VERIFICATION_VERIFIED)
             ->whereIn('current_home_city_id', array_unique([$originCityId, $destinationCityId]))
             ->orderBy('completed_deliveries_count')
             ->orderBy('id')
-            ->first();
+            ->get();
 
-        if ($partner === null) {
-            return null;
+        if ($partners->isEmpty()) {
+            return $partners;
         }
-
-        $order->forceFill(['partner_id' => $partner->id])->save();
 
         $this->activityLogger->log(
             $order,
-            OrderActivityLog::EVENT_PARTNER_MATCHED,
+            OrderActivityLog::EVENT_PARTNERS_NOTIFIED,
             OrderActivityLog::ACTOR_SYSTEM,
             null,
-            metadata: ['partner_id' => $partner->id],
+            metadata: ['partner_ids' => $partners->pluck('id')->all()],
         );
 
-        $this->notifications->notifyUser(
-            $partner->user_id,
-            'new_order_assigned',
-            'New delivery assignment',
-            "Order {$order->booking_reference} has been assigned to you. Open the app to accept it.",
-            ['order_id' => $order->id],
-            Notification::CHANNEL_PUSH,
-        );
+        foreach ($partners as $partner) {
+            $this->notifications->notifyUser(
+                $partner->user_id,
+                'new_order_available',
+                'New delivery available',
+                "Order {$order->booking_reference} is available — open Unassigned Rides to accept it.",
+                [
+                    'order_id' => $order->id,
+                    // Routing hint for the partner app's notification-tap
+                    // handler: land on the Rides tab's Unassigned section,
+                    // not just the app's default screen.
+                    'screen' => 'Rides',
+                    'section' => 'unassigned',
+                ],
+                Notification::CHANNEL_PUSH,
+            );
+        }
 
-        return $partner;
+        return $partners;
     }
 }

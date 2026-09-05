@@ -6,7 +6,12 @@ export type AuthStackParamList = {
 };
 
 export type AppTabsParamList = {
-  Rides: undefined;
+  /** `section` forces the Rides screen onto a given tab (currently only
+   * 'unassigned' is used) — set when a "new order available" push
+   * notification is tapped, so the partner lands directly on the
+   * Unassigned pool instead of wherever they last left the screen. See
+   * hooks/usePushNotifications.ts and features/rides/screens/Rides.tsx. */
+  Rides: { section?: 'unassigned' } | undefined;
   Profile: undefined;
 };
 

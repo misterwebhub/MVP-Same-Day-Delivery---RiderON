@@ -38,6 +38,26 @@ class PartnerAssignmentResource extends JsonResource
                 'phone' => $this->maskPhone($this->sender_phone),
                 'landmark' => $this->sender_landmark,
             ],
+            // Real (unmasked) pickup coordinate + address text when the
+            // customer entered one manually (currently Kanpur-origin orders
+            // only) — the partner needs the actual location to judge
+            // distance and navigate, unlike phone numbers which stay masked
+            // until accepted. Null everywhere else; the app falls back to
+            // route.origin_station's fixed lat/lng in that case.
+            'pickup_address' => ($this->pickup_address_text !== null || $this->pickup_latitude !== null) ? [
+                'text' => $this->pickup_address_text,
+                'latitude' => $this->pickup_latitude !== null ? (float) $this->pickup_latitude : null,
+                'longitude' => $this->pickup_longitude !== null ? (float) $this->pickup_longitude : null,
+            ] : null,
+            // Mirrors pickup_address above but for the delivery/destination
+            // end (currently only opts in for Kanpur-as-destination) — lets
+            // the partner navigate to the real drop point instead of the
+            // fixed destination station once one was entered manually.
+            'delivery_address' => ($this->delivery_address_text !== null || $this->delivery_latitude !== null) ? [
+                'text' => $this->delivery_address_text,
+                'latitude' => $this->delivery_latitude !== null ? (float) $this->delivery_latitude : null,
+                'longitude' => $this->delivery_longitude !== null ? (float) $this->delivery_longitude : null,
+            ] : null,
             'receiver' => [
                 'name' => $this->receiver_name,
                 'phone' => $this->maskPhone($this->receiver_phone),

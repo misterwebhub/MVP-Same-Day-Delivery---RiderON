@@ -23,6 +23,10 @@ class OrderActivityLog extends Model
 
     public const EVENT_PARTNER_MATCHED = 'partner_matched';
 
+    /** Broadcast to every eligible partner's Unassigned pool — no one is
+     * auto-assigned; whoever accepts first via POST /partner/assignments/{id}/accept claims it. */
+    public const EVENT_PARTNERS_NOTIFIED = 'partners_notified';
+
     public const EVENT_PARTNER_REASSIGNED = 'partner_reassigned';
 
     public const EVENT_PARTNER_ACCEPTED = 'partner_accepted';

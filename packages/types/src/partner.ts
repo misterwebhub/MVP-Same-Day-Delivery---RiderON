@@ -4,7 +4,7 @@
  * app/Http/Resources/PartnerAssignmentResource.php,
  * app/Http/Requests/Auth/PartnerLoginRequest.php.
  */
-import type { OrderStatus } from './order';
+import type { OrderStatus, OrderPickupAddress } from './order';
 import type { ParcelType, WeightSlab, Station } from './catalog';
 
 export interface PartnerLoginPayload {
@@ -55,6 +55,19 @@ export interface PartnerAssignment {
 
   sender: PartnerAssignmentParty;
   receiver: PartnerAssignmentParty;
+
+  /** Real (unmasked) pickup coordinate + address text, set only when the
+   *  customer entered one manually (currently Kanpur-origin orders) —
+   *  unlike phone numbers this is never masked, the rider needs the actual
+   *  location to judge distance/navigate. Null everywhere else; fall back
+   *  to route.origin_station's own lat/lng in that case. */
+  pickup_address?: OrderPickupAddress | null;
+
+  /** Mirrors pickup_address above but for the delivery/destination end
+   *  (currently Kanpur-destination orders) — lets the rider navigate to the
+   *  real drop point instead of route.destination_station's fixed lat/lng
+   *  once the customer entered one manually. */
+  delivery_address?: OrderPickupAddress | null;
 
   parcel?: PartnerAssignmentParcel | null;
 

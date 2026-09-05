@@ -14,6 +14,9 @@ import type {
   PartnerEarningsResponse,
   PartnerLoginPayload,
   PaymentStatusResponse,
+  PlacesAutocompleteResponse,
+  PlacesDetailsResponse,
+  PlacesReverseGeocodeResponse,
   PricingQuoteResponse,
   Profile,
   ProhibitedItemsResponse,
@@ -132,6 +135,26 @@ export function createResources(http: HttpClient) {
       getProhibitedItems: () => http.request<ProhibitedItemsResponse>('/prohibited-items'),
     },
 
+    /** Server-side proxy for Google Places — see backend PlacesController's
+     * docblock for why AddressAutocompleteField can't call Google directly
+     * (no CORS headers on Google's Autocomplete/Details JSON endpoints, so a
+     * browser fetch from Expo web is blocked outright). */
+    places: {
+      /** `origin` biases results toward wherever the customer currently is
+       * (Zomato/Porter-style "nearby first"), same as passing no bias when omitted. */
+      autocomplete: (input: string, origin?: { latitude: number; longitude: number }) =>
+        http.request<PlacesAutocompleteResponse>('/places/autocomplete', {
+          query: { input, ...(origin ? { lat: origin.latitude, lng: origin.longitude } : {}) },
+        }),
+
+      details: (placeId: string) => http.request<PlacesDetailsResponse>('/places/details', { query: { place_id: placeId } }),
+
+      /** Turns a GPS fix into an editable address + pincode for the "use my
+       * current location" flow. */
+      reverseGeocode: (latitude: number, longitude: number) =>
+        http.request<PlacesReverseGeocodeResponse>('/places/reverse-geocode', { query: { lat: latitude, lng: longitude } }),
+    },
+
     pricing: {
       getQuote: (payload: QuotePayload) =>
         http.request<PricingQuoteResponse>('/pricing/quote', { method: 'POST', body: payload }),
@@ -211,6 +234,13 @@ export function createResources(http: HttpClient) {
 
       markRead: (notificationId: number) =>
         http.request<null>(`/notifications/${notificationId}/read`, { method: 'POST' }),
+
+      /** Registers an Expo push token (or raw FCM token) for the current
+       * user's device — see NotificationController::registerDevice. Called
+       * once at boot after login so PartnerAssignmentService's broadcast
+       * push (new-order-available) has somewhere to deliver to. */
+      registerDevice: (payload: { token: string; platform: string }) =>
+        http.request<{ id: number; platform: string }>('/devices', { method: 'POST', body: payload }),
     },
 
     /** All role:partner-gated (see routes/api.php) — only meaningful when

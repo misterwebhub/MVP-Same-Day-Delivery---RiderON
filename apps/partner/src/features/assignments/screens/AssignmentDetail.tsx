@@ -52,6 +52,30 @@ function mapsUrl(station: { latitude: number | string; longitude: number | strin
   return `https://www.google.com/maps/dir/?api=1&destination=${station.latitude},${station.longitude}`;
 }
 
+/** Prefer the customer's real manually-entered pickup coordinate (currently
+ * Kanpur-origin orders only, see OrderPickupAddress) over the origin
+ * station's fixed lat/lng, so post-accept the rider navigates to the actual
+ * pickup point instead of the station when one was provided. */
+function pickupPoint(assignment: PartnerAssignment): { latitude: number | string; longitude: number | string } | null {
+  const manual = assignment.pickup_address;
+  if (manual && manual.latitude !== null && manual.longitude !== null) {
+    return { latitude: manual.latitude, longitude: manual.longitude };
+  }
+  return assignment.route?.origin_station ?? null;
+}
+
+/** Mirrors pickupPoint above but for the delivery/destination end (currently
+ * Kanpur-destination orders only, see OrderPickupAddress) — lets the rider
+ * navigate to the customer's actual drop point instead of the destination
+ * station when one was provided. */
+function deliveryPoint(assignment: PartnerAssignment): { latitude: number | string; longitude: number | string } | null {
+  const manual = assignment.delivery_address;
+  if (manual && manual.latitude !== null && manual.longitude !== null) {
+    return { latitude: manual.latitude, longitude: manual.longitude };
+  }
+  return assignment.route?.destination_station ?? null;
+}
+
 /**
  * Core status-driven action screen — Accept / Navigate / Call (proxy) / OTP entry
  * for pickup and delivery, per docs/06's "Assignment Detail" / "Pickup flow" /
@@ -258,9 +282,12 @@ export function AssignmentDetail({ route }: Props) {
         <Text style={styles.partyName}>{assignment.sender.name}</Text>
         <Text style={styles.subText}>{assignment.sender.phone}</Text>
         {assignment.sender.landmark ? <Text style={styles.subText}>{assignment.sender.landmark}</Text> : null}
+        {assignment.pickup_address?.text ? (
+          <Text style={styles.subText}>Pickup address: {assignment.pickup_address.text}</Text>
+        ) : null}
         {(pickupPhase || pendingAccept) && !done ? (
           <View style={styles.actionRow}>
-            <Button title="Navigate" variant="secondary" onPress={() => onNavigate(mapsUrl(assignment.route?.origin_station))} />
+            <Button title="Navigate" variant="secondary" onPress={() => onNavigate(mapsUrl(pickupPoint(assignment)))} />
             <View style={styles.actionGap} />
             <Button title="Call Sender" variant="secondary" onPress={() => onCall('sender')} loading={actionLoading} />
           </View>
@@ -272,9 +299,12 @@ export function AssignmentDetail({ route }: Props) {
         <Text style={styles.partyName}>{assignment.receiver.name}</Text>
         <Text style={styles.subText}>{assignment.receiver.phone}</Text>
         {assignment.receiver.landmark ? <Text style={styles.subText}>{assignment.receiver.landmark}</Text> : null}
+        {assignment.delivery_address?.text ? (
+          <Text style={styles.subText}>Delivery address: {assignment.delivery_address.text}</Text>
+        ) : null}
         {transit || deliveryPhase ? (
           <View style={styles.actionRow}>
-            <Button title="Navigate" variant="secondary" onPress={() => onNavigate(mapsUrl(assignment.route?.destination_station))} />
+            <Button title="Navigate" variant="secondary" onPress={() => onNavigate(mapsUrl(deliveryPoint(assignment)))} />
             <View style={styles.actionGap} />
             <Button title="Call Receiver" variant="secondary" onPress={() => onCall('receiver')} loading={actionLoading} />
           </View>

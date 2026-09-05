@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, Linking, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -84,9 +84,10 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 /**
  * Order tracking/detail screen — status timeline, route/parcel/party details,
- * OTP status cards, and self-service cancel. The API never returns rider/partner
- * info (see app/Http/Resources/OrderResource.php — no rider fields at all), so
- * this screen deliberately shows no rider name/photo/rating, only real data.
+ * OTP status cards, and self-service cancel. Once a partner accepts (no more
+ * silent auto-assign — see PartnerAssignmentService), `order.partner` is
+ * populated and a Rider card shows their name/phone/vehicle + a tap-to-call
+ * button; before that it's null and the card is simply omitted.
  */
 export function OrderDetails({ route, navigation }: Props) {
   const { orderId } = route.params;
@@ -295,6 +296,23 @@ export function OrderDetails({ route, navigation }: Props) {
           value={order.route_schedule ? `${order.route_schedule.departure_time} – ${order.route_schedule.arrival_time}` : '—'}
         />
       </View>
+
+      {order.partner ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Your rider</Text>
+          <SummaryRow label="Name" value={order.partner.name ?? '—'} />
+          {order.partner.vehicle_type ? <SummaryRow label="Vehicle" value={order.partner.vehicle_type.replace(/_/g, ' ')} /> : null}
+          {order.partner.rating_avg !== null ? <SummaryRow label="Rating" value={`${order.partner.rating_avg.toFixed(1)} ★`} /> : null}
+          {order.partner.phone ? (
+            <Button
+              title={`Call ${order.partner.name ?? 'rider'}`}
+              variant="secondary"
+              onPress={() => Linking.openURL(`tel:${order.partner!.phone}`)}
+              style={styles.addPhotoButton}
+            />
+          ) : null}
+        </View>
+      ) : null}
 
       {order.parcel ? (
         <View style={styles.card}>

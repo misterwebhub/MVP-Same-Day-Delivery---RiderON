@@ -3,6 +3,7 @@ import { ActivityIndicator, AppState, Alert, FlatList, RefreshControl, StyleShee
 import { useFocusEffect, type CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as Location from 'expo-location';
 import { color, radius, space, statusBadgeColor, typography } from '@rideron/design-tokens';
 import type { PartnerAssignment } from '@rideron/types';
 import { ApiClientError } from '@rideron/api-client';
@@ -11,8 +12,23 @@ import { TextField } from '../../../components/TextField';
 import { Icon } from '../../../components/Icon';
 import { apiClient } from '../../../services/httpClient';
 import { formatDateLabel, formatTime } from '../../../utils/date';
+import { formatDistanceKm, haversineDistanceKm } from '../../../utils/distance';
 import { isPendingAccept, statusLabel } from '../../assignments/statusHelpers';
 import type { AppTabsParamList, RootStackParamList } from '../../../navigation/types';
+
+/** The real (unmasked) manual pickup coordinate when the customer entered one
+ * (currently Kanpur-origin orders only), else the order's fixed origin
+ * station lat/lng — same fallback used for the post-accept Google Maps link
+ * in AssignmentDetail. */
+function pickupPoint(item: PartnerAssignment): { latitude: number; longitude: number } | null {
+  const manual = item.pickup_address;
+  if (manual && manual.latitude !== null && manual.longitude !== null) {
+    return { latitude: manual.latitude, longitude: manual.longitude };
+  }
+  const station = item.route?.origin_station;
+  if (!station) return null;
+  return { latitude: Number(station.latitude), longitude: Number(station.longitude) };
+}
 
 type Props = CompositeScreenProps<BottomTabScreenProps<AppTabsParamList, 'Rides'>, NativeStackScreenProps<RootStackParamList>>;
 
@@ -23,8 +39,21 @@ type Section = 'unassigned' | 'mine';
  * the simplified-navigation request: one Rides tab instead of separate
  * Dashboard/Earnings tabs, so a rider always lands on "find work" or
  * "continue work" without extra taps. */
-export function Rides({ navigation }: Props) {
+export function Rides({ navigation, route }: Props) {
   const [section, setSection] = useState<Section>('unassigned');
+
+  /** A tapped "new order available" push notification navigates here with
+   * { section: 'unassigned' } (see hooks/usePushNotifications.ts) — force
+   * the tab even if the rider had "My Rides" open, then clear the param so
+   * a later in-app tap on the "My Rides" pill isn't fought on next focus. */
+  useFocusEffect(
+    useCallback(() => {
+      if (route.params?.section) {
+        setSection(route.params.section);
+        navigation.setParams({ section: undefined });
+      }
+    }, [route.params?.section, navigation]),
+  );
 
   const [unassigned, setUnassigned] = useState<PartnerAssignment[] | null>(null);
   const [pendingMine, setPendingMine] = useState<PartnerAssignment[]>([]);
@@ -35,6 +64,27 @@ export function Rides({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [myLocation, setMyLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Best-effort — a denied permission or unavailable GPS just means the
+  // distance labels don't render, nothing in the list is blocked on this.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        let granted = status === 'granted';
+        if (!granted) {
+          const requested = await Location.requestForegroundPermissionsAsync();
+          granted = requested.status === 'granted';
+        }
+        if (!granted) return;
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setMyLocation({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+      } catch {
+        // Ignore — see comment above.
+      }
+    })();
+  }, []);
 
   /** No date filter — a rider must see every ride they're eligible for or
    * already hold, not just today's, or a booking for tomorrow (e.g. an order
@@ -194,6 +244,8 @@ export function Rides({ navigation }: Props) {
           }
           renderItem={({ item }) => {
             const statusColor = statusBadgeColor[item.status as keyof typeof statusBadgeColor] ?? color.info;
+            const point = pickupPoint(item);
+            const distanceLabel = myLocation && point ? formatDistanceKm(haversineDistanceKm(myLocation, point)) : null;
             return section === 'unassigned' ? (
               <View style={styles.row}>
                 <View style={[styles.statusBadge, { backgroundColor: `${statusColor}1F` }]}>
@@ -208,6 +260,15 @@ export function Rides({ navigation }: Props) {
                     {item.booking_date ? formatDateLabel(item.booking_date) : '—'}
                     {item.route_schedule ? ` • ${formatTime(item.route_schedule.departure_time)}` : ''}
                   </Text>
+                  {distanceLabel ? (
+                    <View style={styles.rowDistanceRow}>
+                      <Icon name="navigate-outline" size={12} color={color.primaryDark} />
+                      <Text style={styles.rowDistance} numberOfLines={1}>
+                        {' '}
+                        {distanceLabel} from pickup
+                      </Text>
+                    </View>
+                  ) : null}
                   <Text style={[styles.rowStatus, { color: statusColor }]}>{statusLabel(item.status)}</Text>
                 </View>
                 <Button
@@ -371,6 +432,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: color.textSecondary,
     marginTop: 2,
+  },
+  rowDistanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  rowDistance: {
+    ...typography.caption,
+    color: color.primaryDark,
+    fontWeight: '700',
   },
   rowStatus: {
     ...typography.caption,

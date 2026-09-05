@@ -81,4 +81,21 @@ return [
         'caller_id' => env('EXOTEL_CALLER_ID'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Google Places
+    |--------------------------------------------------------------------------
+    |
+    | Used server-side by PlacesController to proxy Autocomplete/Details
+    | lookups for the customer app's manual address inputs. Kept server-side
+    | (rather than called directly from the app) because Google's Places
+    | Autocomplete/Details JSON endpoints don't send CORS headers, so a
+    | browser fetch from Expo web is blocked outright — this proxy also
+    | keeps the API key out of the client bundle.
+    |
+    */
+    'google_places' => [
+        'key' => env('GOOGLE_PLACES_API_KEY'),
+    ],
+
 ];

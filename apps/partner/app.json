@@ -32,6 +32,12 @@
         {
           "locationWhenInUsePermission": "RiderON uses your location at pickup/delivery to timestamp proof of arrival for fraud prevention. Location is never tracked in the background."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0E7C4A"
+        }
       ]
     ]
   }

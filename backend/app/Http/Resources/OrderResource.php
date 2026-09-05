@@ -33,6 +33,17 @@ class OrderResource extends JsonResource
                 'departure_time' => $this->routeSchedule->departure_time,
                 'arrival_time' => $this->routeSchedule->arrival_time,
             ]),
+            // Only present once a partner has accepted (partner_id set) —
+            // null before that, per "no auto-assign, show Unassigned until
+            // someone accepts" behavior. No live GPS: partners travel fixed
+            // scheduled routes between stations, so "location" here means
+            // the route/stations above, not a live coordinate.
+            'partner' => $this->whenLoaded('partner', fn () => $this->partner === null ? null : [
+                'name' => $this->partner->user?->name,
+                'phone' => $this->partner->user?->phone,
+                'vehicle_type' => $this->partner->vehicle_type,
+                'rating_avg' => $this->partner->rating_avg !== null ? (float) $this->partner->rating_avg : null,
+            ]),
             'sender' => [
                 'name' => $this->sender_name,
                 'phone' => $this->sender_phone,
@@ -43,6 +54,22 @@ class OrderResource extends JsonResource
                 'phone' => $this->receiver_phone,
                 'landmark' => $this->receiver_landmark,
             ],
+            // Only set when the origin station's city opted into manual
+            // pickup (currently Kanpur) and the customer actually entered
+            // one — null everywhere else, meaning "use the origin station's
+            // own address/coordinates" (still shown via `route` above).
+            'pickup_address' => ($this->pickup_address_text !== null || $this->pickup_latitude !== null) ? [
+                'text' => $this->pickup_address_text,
+                'latitude' => $this->pickup_latitude !== null ? (float) $this->pickup_latitude : null,
+                'longitude' => $this->pickup_longitude !== null ? (float) $this->pickup_longitude : null,
+            ] : null,
+            // Mirrors pickup_address above but for the delivery/destination
+            // end (currently only opts in for Kanpur-as-destination).
+            'delivery_address' => ($this->delivery_address_text !== null || $this->delivery_latitude !== null) ? [
+                'text' => $this->delivery_address_text,
+                'latitude' => $this->delivery_latitude !== null ? (float) $this->delivery_latitude : null,
+                'longitude' => $this->delivery_longitude !== null ? (float) $this->delivery_longitude : null,
+            ] : null,
             'parcel' => $this->whenLoaded('parcel', fn () => $this->parcel === null ? null : [
                 'parcel_type' => $this->parcel->parcel_type,
                 'weight_slab' => $this->parcel->weight_slab,

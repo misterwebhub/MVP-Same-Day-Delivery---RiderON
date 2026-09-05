@@ -34,6 +34,16 @@ export function RouteSelect({ navigation }: Props) {
   const [popularRoutes, setPopularRoutes] = useState<RouteSummary[]>([]);
   const bottomPadding = useSafeBottomPadding(space[6]);
 
+  // Manual address, captured inline the moment a Kanpur station is tapped in
+  // RouteFieldsCard's station picker — same draft-then-commit pattern as the
+  // station picks above, merged into the shared draft only on Continue.
+  const [pickupAddressText, setPickupAddressText] = useState(draft.pickupAddressText);
+  const [pickupLatitude, setPickupLatitude] = useState(draft.pickupLatitude);
+  const [pickupLongitude, setPickupLongitude] = useState(draft.pickupLongitude);
+  const [deliveryAddressText, setDeliveryAddressText] = useState(draft.deliveryAddressText);
+  const [deliveryLatitude, setDeliveryLatitude] = useState(draft.deliveryLatitude);
+  const [deliveryLongitude, setDeliveryLongitude] = useState(draft.deliveryLongitude);
+
   const { route, resolving, error } = useRouteResolution(originStation, destinationStation);
 
   useEffect(() => {
@@ -64,11 +74,35 @@ export function RouteSelect({ navigation }: Props) {
     setOriginCity(destinationCity);
     setDestinationStation(os);
     setDestinationCity(oc);
+    // Swap the sides' captured addresses too, so a Kanpur pickup address
+    // doesn't silently reappear as a Kanpur delivery address (or vice versa)
+    // after the stations flip.
+    const pat = pickupAddressText;
+    const plat = pickupLatitude;
+    const plng = pickupLongitude;
+    setPickupAddressText(deliveryAddressText);
+    setPickupLatitude(deliveryLatitude);
+    setPickupLongitude(deliveryLongitude);
+    setDeliveryAddressText(pat);
+    setDeliveryLatitude(plat);
+    setDeliveryLongitude(plng);
   };
 
   const onContinue = () => {
     if (!route || !originCity || !originStation || !destinationCity || !destinationStation) return;
-    update({ originCity, originStation, destinationCity, destinationStation, route });
+    update({
+      originCity,
+      originStation,
+      destinationCity,
+      destinationStation,
+      route,
+      pickupAddressText,
+      pickupLatitude,
+      pickupLongitude,
+      deliveryAddressText,
+      deliveryLatitude,
+      deliveryLongitude,
+    });
     navigation.navigate('ParcelDetails');
   };
 
@@ -92,6 +126,16 @@ export function RouteSelect({ navigation }: Props) {
               setDestinationCity(station.city);
             }}
             onSwap={onSwap}
+            onPickupAddressCapture={(capture) => {
+              setPickupAddressText(capture.text);
+              setPickupLatitude(capture.latitude);
+              setPickupLongitude(capture.longitude);
+            }}
+            onDeliveryAddressCapture={(capture) => {
+              setDeliveryAddressText(capture.text);
+              setDeliveryLatitude(capture.latitude);
+              setDeliveryLongitude(capture.longitude);
+            }}
           />
           <RoutePreviewCard route={route} resolving={resolving} error={error} />
         </Card>

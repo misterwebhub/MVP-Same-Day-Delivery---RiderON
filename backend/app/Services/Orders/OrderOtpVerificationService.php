@@ -5,12 +5,14 @@ namespace App\Services\Orders;
 use App\Constants\OrderStatus;
 use App\Exceptions\InvalidOrderTransitionException;
 use App\Models\DeliveryPartner;
+use App\Models\Notification;
 use App\Models\Order;
 use App\Models\OrderActivityLog;
 use App\Models\OrderStatusHistory;
 use App\Models\OtpVerification;
 use App\Models\OtpVerificationLog;
 use App\Services\Activity\ActivityLogger;
+use App\Services\Notifications\NotificationService;
 use App\Services\Otp\OtpService;
 use App\StateMachines\OrderStateMachine;
 use Illuminate\Http\Request;
@@ -41,6 +43,7 @@ class OrderOtpVerificationService
         private readonly OrderStateMachine $stateMachine,
         private readonly OrderOtpExpiryCalculator $expiryCalculator,
         private readonly ActivityLogger $activityLogger,
+        private readonly NotificationService $notifications,
     ) {
     }
 
@@ -206,6 +209,20 @@ class OrderOtpVerificationService
             $latitude,
             $longitude,
         );
+
+        if ($spec['target'] === OrderStatus::DELIVERED) {
+            // Customer-facing "your parcel arrived" push — routing data lets
+            // the customer app's notification-tap handler land directly on
+            // this order's tracking screen instead of the app's default tab.
+            $this->notifications->notifyUser(
+                $order->customer_id,
+                'order_delivered',
+                'Delivered',
+                "Order {$order->booking_reference} has been delivered.",
+                ['order_id' => $order->id, 'screen' => 'OrderDetails'],
+                Notification::CHANNEL_PUSH,
+            );
+        }
 
         if ($spec['target'] === OrderStatus::PICKED_UP) {
             return $this->stateMachine->transitionIfNotAlready($updated, OrderStatus::IN_TRANSIT, OrderStatusHistory::ACTOR_SYSTEM);

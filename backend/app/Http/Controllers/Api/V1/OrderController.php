@@ -39,6 +39,9 @@ class OrderController extends Controller
         'parcel.images',
         'payments',
         'otpVerifications',
+        // Once a partner accepts (partner_id set), the customer app shows
+        // their name/phone/vehicle + the route they're carrying it on.
+        'partner.user',
     ];
 
     public function __construct(
@@ -148,6 +151,22 @@ class OrderController extends Controller
         $bookingReference = $this->bookingReferenceGenerator->generate();
         $idempotencyKey = $request->header('Idempotency-Key');
 
+        $route->loadMissing(['originStation.city', 'destinationStation.city']);
+
+        [$pickupAddressText, $pickupLatitude, $pickupLongitude] = $this->resolveManualAddress(
+            $route->originStation?->city?->name,
+            $request->input('pickup_address_text'),
+            $request->input('pickup_latitude'),
+            $request->input('pickup_longitude'),
+        );
+
+        [$deliveryAddressText, $deliveryLatitude, $deliveryLongitude] = $this->resolveManualAddress(
+            $route->destinationStation?->city?->name,
+            $request->input('delivery_address_text'),
+            $request->input('delivery_latitude'),
+            $request->input('delivery_longitude'),
+        );
+
         $order = Order::create([
             'booking_reference' => $bookingReference,
             'customer_id' => $request->user()->id,
@@ -161,6 +180,12 @@ class OrderController extends Controller
             'receiver_name' => $request->string('receiver_name')->toString(),
             'receiver_phone' => $request->string('receiver_phone')->toString(),
             'receiver_landmark' => $request->input('receiver_landmark'),
+            'pickup_address_text' => $pickupAddressText,
+            'pickup_latitude' => $pickupLatitude,
+            'pickup_longitude' => $pickupLongitude,
+            'delivery_address_text' => $deliveryAddressText,
+            'delivery_latitude' => $deliveryLatitude,
+            'delivery_longitude' => $deliveryLongitude,
             'price_breakdown' => $quote['breakdown'],
             'total_amount_paise' => $quote['total_amount_paise'],
             'currency' => 'INR',
@@ -216,6 +241,37 @@ class OrderController extends Controller
         ]);
 
         return $order;
+    }
+
+    /**
+     * Manual address entry (pickup OR delivery) is only ever trusted/stored
+     * when the relevant end of the route (origin for pickup, destination for
+     * delivery) belongs to a city in config('parcel.manual_address_cities')
+     * (currently Kanpur). Anywhere else — even if the client submitted these
+     * fields — they're silently dropped, so the order falls back to the
+     * fixed station's own coordinates everywhere downstream (partner
+     * distance calc, maps link). See OrderController::resolveManualAddress().
+     *
+     * @return array{0: ?string, 1: ?float, 2: ?float} [address_text, lat, lng]
+     */
+    private function resolveManualAddress(?string $cityName, mixed $addressText, mixed $latitude, mixed $longitude): array
+    {
+        $allowed = $cityName !== null && collect(config('parcel.manual_address_cities', []))
+            ->contains(fn ($city) => strcasecmp($city, $cityName) === 0);
+
+        if (! $allowed) {
+            return [null, null, null];
+        }
+
+        if ($addressText === null && $latitude === null && $longitude === null) {
+            return [null, null, null];
+        }
+
+        return [
+            $addressText !== null ? (string) $addressText : null,
+            $latitude !== null ? (float) $latitude : null,
+            $longitude !== null ? (float) $longitude : null,
+        ];
     }
 
     private function processRefund(Order $order, int $refundPercentage): void

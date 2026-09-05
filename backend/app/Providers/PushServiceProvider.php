@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Push\ExpoPushProvider;
 use App\Services\Push\FcmProvider;
 use App\Services\Push\MockPushProvider;
 use App\Services\Push\PushProvider;
@@ -14,6 +15,7 @@ class PushServiceProvider extends ServiceProvider
         $this->app->bind(PushProvider::class, function () {
             return match (config('services.push_driver')) {
                 'fcm' => $this->app->make(FcmProvider::class),
+                'expo' => $this->app->make(ExpoPushProvider::class),
                 default => $this->app->make(MockPushProvider::class),
             };
         });

@@ -74,6 +74,17 @@ export function Home({ navigation }: Props) {
     quickDestinationStation,
   );
 
+  // Manual address, captured inline the moment a Kanpur station is tapped in
+  // RouteFieldsCard's station picker — kept as local draft state here (same
+  // draft-then-commit pattern as the station picks above) and only merged
+  // into the shared BookingDraftContext once the customer actually proceeds.
+  const [quickPickupAddressText, setQuickPickupAddressText] = useState(draft.pickupAddressText);
+  const [quickPickupLatitude, setQuickPickupLatitude] = useState(draft.pickupLatitude);
+  const [quickPickupLongitude, setQuickPickupLongitude] = useState(draft.pickupLongitude);
+  const [quickDeliveryAddressText, setQuickDeliveryAddressText] = useState(draft.deliveryAddressText);
+  const [quickDeliveryLatitude, setQuickDeliveryLatitude] = useState(draft.deliveryLatitude);
+  const [quickDeliveryLongitude, setQuickDeliveryLongitude] = useState(draft.deliveryLongitude);
+
   const load = useCallback(async () => {
     const [ordersResult, routesResult] = await Promise.allSettled([
       apiClient.orders.list({ per_page: 5 }),
@@ -111,6 +122,12 @@ export function Home({ navigation }: Props) {
         destinationCity: quickDestinationCity,
         destinationStation: quickDestinationStation,
         route: quickRoute,
+        pickupAddressText: quickPickupAddressText,
+        pickupLatitude: quickPickupLatitude,
+        pickupLongitude: quickPickupLongitude,
+        deliveryAddressText: quickDeliveryAddressText,
+        deliveryLatitude: quickDeliveryLatitude,
+        deliveryLongitude: quickDeliveryLongitude,
       });
       navigation.getParent()?.navigate('Booking', { screen: 'ParcelDetails' });
       return;
@@ -196,6 +213,28 @@ export function Home({ navigation }: Props) {
               setQuickOriginCity(quickDestinationCity);
               setQuickDestinationStation(os);
               setQuickDestinationCity(oc);
+              // Swap the sides' captured addresses too, so a Kanpur pickup
+              // address doesn't silently reappear as a Kanpur delivery
+              // address (or vice versa) after the stations flip.
+              const pat = quickPickupAddressText;
+              const plat = quickPickupLatitude;
+              const plng = quickPickupLongitude;
+              setQuickPickupAddressText(quickDeliveryAddressText);
+              setQuickPickupLatitude(quickDeliveryLatitude);
+              setQuickPickupLongitude(quickDeliveryLongitude);
+              setQuickDeliveryAddressText(pat);
+              setQuickDeliveryLatitude(plat);
+              setQuickDeliveryLongitude(plng);
+            }}
+            onPickupAddressCapture={(capture) => {
+              setQuickPickupAddressText(capture.text);
+              setQuickPickupLatitude(capture.latitude);
+              setQuickPickupLongitude(capture.longitude);
+            }}
+            onDeliveryAddressCapture={(capture) => {
+              setQuickDeliveryAddressText(capture.text);
+              setQuickDeliveryLatitude(capture.latitude);
+              setQuickDeliveryLongitude(capture.longitude);
             }}
           />
           <RoutePreviewCard route={quickRoute} resolving={quickResolving} error={quickError} />

@@ -31,6 +31,22 @@ export interface BookingDraft {
   parcelPhotoUri: string | null;
   sender: BookingPartyDraft;
   receiver: BookingPartyDraft;
+  /** Free-text pickup address label — only meaningful (and only sent to the
+   * backend) when the resolved origin station's city opts into manual pickup
+   * (currently Kanpur). Empty string otherwise/by default. */
+  pickupAddressText: string;
+  /** Device GPS captured at the moment the customer entered the address
+   * above — never geocoded from the text. Null until captured. */
+  pickupLatitude: number | null;
+  pickupLongitude: number | null;
+  /** Mirrors pickupAddressText above but for the delivery/destination side —
+   * only meaningful when the resolved destination station's city opts into
+   * manual address entry (currently Kanpur). Empty string otherwise/by default. */
+  deliveryAddressText: string;
+  /** Coordinate resolved via Places Autocomplete (or manual GPS/fallback) for
+   * the delivery address above. Null until captured. */
+  deliveryLatitude: number | null;
+  deliveryLongitude: number | null;
   quote: PricingQuoteResponse | null;
   prohibitedItemsAccepted: boolean;
   /** Set the moment orders.create() succeeds in BookingSummary's onConfirm,
@@ -60,6 +76,12 @@ const INITIAL_DRAFT: BookingDraft = {
   parcelPhotoUri: null,
   sender: { name: '', phone: '', landmark: '' },
   receiver: { name: '', phone: '', landmark: '' },
+  pickupAddressText: '',
+  pickupLatitude: null,
+  pickupLongitude: null,
+  deliveryAddressText: '',
+  deliveryLatitude: null,
+  deliveryLongitude: null,
   quote: null,
   prohibitedItemsAccepted: false,
   pendingOrder: null,

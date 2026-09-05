@@ -57,7 +57,13 @@ class PartnerAssignmentServiceTest extends TestCase
             ], $overrides));
     }
 
-    public function test_assigns_the_eligible_partner_with_the_fewest_completed_deliveries(): void
+    /**
+     * Per explicit product direction: nobody is auto-assigned any more.
+     * attemptAssignment() only broadcasts to eligible partners and leaves
+     * `partner_id` null so the order stays visible in everyone's Unassigned
+     * pool until a partner explicitly accepts it.
+     */
+    public function test_notifies_eligible_partners_but_does_not_assign_anyone(): void
     {
         $city = City::factory()->create();
         $order = $this->makeOrder($city);
@@ -71,32 +77,15 @@ class PartnerAssignmentServiceTest extends TestCase
             'completed_deliveries_count' => 2,
         ]);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertNotNull($assigned);
-        $this->assertSame($leastBusy->id, $assigned->id);
-        $this->assertSame($leastBusy->id, $order->fresh()->partner_id);
-        $this->assertNotSame($busier->id, $assigned->id);
-    }
-
-    public function test_breaks_ties_on_completed_deliveries_by_lowest_partner_id(): void
-    {
-        $city = City::factory()->create();
-        $order = $this->makeOrder($city);
-
-        $first = DeliveryPartner::factory()->create([
-            'current_home_city_id' => $city->id,
-            'completed_deliveries_count' => 5,
-        ]);
-        $second = DeliveryPartner::factory()->create([
-            'current_home_city_id' => $city->id,
-            'completed_deliveries_count' => 5,
-        ]);
-
-        $assigned = $this->service->attemptAssignment($order);
-
-        $this->assertSame($first->id, $assigned->id);
-        $this->assertLessThan($second->id, $first->id);
+        $this->assertCount(2, $notified);
+        $this->assertEqualsCanonicalizing(
+            [$busier->id, $leastBusy->id],
+            $notified->pluck('id')->all(),
+        );
+        $this->assertNull($order->fresh()->partner_id);
+        $this->assertSame(OrderStatus::RIDER_ASSIGNMENT_PENDING, $order->fresh()->status);
     }
 
     public function test_excludes_inactive_partners(): void
@@ -107,9 +96,10 @@ class PartnerAssignmentServiceTest extends TestCase
         DeliveryPartner::factory()->inactive()->create(['current_home_city_id' => $city->id]);
         $eligible = DeliveryPartner::factory()->create(['current_home_city_id' => $city->id]);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertSame($eligible->id, $assigned->id);
+        $this->assertSame([$eligible->id], $notified->pluck('id')->all());
+        $this->assertNull($order->fresh()->partner_id);
     }
 
     public function test_excludes_unverified_partners(): void
@@ -120,9 +110,10 @@ class PartnerAssignmentServiceTest extends TestCase
         DeliveryPartner::factory()->unverified()->create(['current_home_city_id' => $city->id]);
         $eligible = DeliveryPartner::factory()->create(['current_home_city_id' => $city->id]);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertSame($eligible->id, $assigned->id);
+        $this->assertSame([$eligible->id], $notified->pluck('id')->all());
+        $this->assertNull($order->fresh()->partner_id);
     }
 
     public function test_excludes_partners_based_in_a_different_city(): void
@@ -133,9 +124,9 @@ class PartnerAssignmentServiceTest extends TestCase
 
         DeliveryPartner::factory()->create(['current_home_city_id' => $otherCity->id]);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertNull($assigned);
+        $this->assertCount(0, $notified);
         $this->assertNull($order->fresh()->partner_id);
     }
 
@@ -155,10 +146,10 @@ class PartnerAssignmentServiceTest extends TestCase
         // Return-leg order: originates at the far end, destined for the partner's home city.
         $returnOrder = $this->makeOrderOnCorridor($farEnd, $home);
 
-        $assigned = $this->service->attemptAssignment($returnOrder);
+        $notified = $this->service->attemptAssignment($returnOrder);
 
-        $this->assertNotNull($assigned);
-        $this->assertSame($partner->id, $assigned->id);
+        $this->assertSame([$partner->id], $notified->pluck('id')->all());
+        $this->assertNull($returnOrder->fresh()->partner_id);
     }
 
     public function test_a_partner_with_no_connection_to_either_end_of_the_route_is_not_eligible(): void
@@ -171,18 +162,18 @@ class PartnerAssignmentServiceTest extends TestCase
 
         $order = $this->makeOrderOnCorridor($origin, $destination);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertNull($assigned);
+        $this->assertCount(0, $notified);
     }
 
     /**
      * A partner travels a scheduled train/bus route and can carry multiple
      * parcels on the same trip, so already being assigned to another
-     * non-terminal order the same day must NOT disqualify them from a
-     * second (or third...) same-day order.
+     * non-terminal order the same day must NOT disqualify them from being
+     * notified about a second (or third...) same-day order.
      */
-    public function test_can_assign_a_partner_already_on_another_non_terminal_order_the_same_day(): void
+    public function test_notifies_a_partner_already_on_another_non_terminal_order_the_same_day(): void
     {
         $city = City::factory()->create();
         $bookingDate = '2026-02-10';
@@ -195,13 +186,9 @@ class PartnerAssignmentServiceTest extends TestCase
 
         $order = $this->makeOrder($city, $bookingDate);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        // $busyPartner has 0 completed deliveries and the lowest id among
-        // eligible partners in this scenario, so the fewest-deliveries /
-        // lowest-id tie-break picks them again — proving same-day busyness
-        // is not a factor in eligibility.
-        $this->assertSame($busyPartner->id, $assigned->id);
+        $this->assertSame([$busyPartner->id], $notified->pluck('id')->all());
     }
 
     public function test_does_not_exclude_a_partner_whose_same_day_order_is_cancelled(): void
@@ -217,19 +204,19 @@ class PartnerAssignmentServiceTest extends TestCase
 
         $order = $this->makeOrder($city, $bookingDate);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertSame($partner->id, $assigned->id);
+        $this->assertSame([$partner->id], $notified->pluck('id')->all());
     }
 
-    public function test_returns_null_and_leaves_the_order_unassigned_when_no_eligible_partner_exists(): void
+    public function test_returns_an_empty_collection_and_leaves_the_order_unassigned_when_no_eligible_partner_exists(): void
     {
         $city = City::factory()->create();
         $order = $this->makeOrder($city);
 
-        $assigned = $this->service->attemptAssignment($order);
+        $notified = $this->service->attemptAssignment($order);
 
-        $this->assertNull($assigned);
+        $this->assertCount(0, $notified);
         $this->assertNull($order->fresh()->partner_id);
     }
 }

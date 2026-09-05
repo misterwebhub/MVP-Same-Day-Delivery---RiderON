@@ -83,6 +83,20 @@ export interface OrderOtpField {
   resend_count: number;
 }
 
+/**
+ * Manual pickup OR delivery address, set only for the end of the route
+ * (origin for pickup, destination for delivery) that opted into free-text
+ * entry (currently Kanpur — see backend config('parcel.manual_address_cities')).
+ * Null everywhere else, meaning "use the fixed station's own address/coordinates"
+ * instead. `latitude`/`longitude` are the customer's device GPS at entry time —
+ * never geocoded from `text`.
+ */
+export interface OrderPickupAddress {
+  text: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 export interface Order {
   id: number;
   booking_reference: string;
@@ -104,8 +118,23 @@ export interface Order {
     arrival_time: string;
   };
 
+  /** Present once a partner has accepted (partner_id set); null before that
+   *  — no auto-assign, order sits in every eligible partner's Unassigned
+   *  tab until one accepts. No live GPS: partners travel the fixed
+   *  scheduled route above between stations, so there's no coordinate to
+   *  show beyond that route. */
+  partner?: {
+    name: string | null;
+    phone: string | null;
+    vehicle_type: string | null;
+    rating_avg: number | null;
+  } | null;
+
   sender: OrderPartyDetails;
   receiver: OrderPartyDetails;
+
+  pickup_address?: OrderPickupAddress | null;
+  delivery_address?: OrderPickupAddress | null;
 
   parcel?: OrderParcelDetails | null;
 
@@ -140,6 +169,20 @@ export interface CreateOrderPayload {
   receiver_name: string;
   receiver_phone: string;
   receiver_landmark?: string | null;
+  /** Free-text pickup address — only honoured server-side when the resolved
+   *  route's origin station is in a manual-address city (currently Kanpur);
+   *  silently ignored otherwise. Send alongside pickup_latitude/longitude. */
+  pickup_address_text?: string | null;
+  /** Customer's device GPS (or Places Autocomplete result) captured when they entered the address above — required together with pickup_longitude if either is sent. */
+  pickup_latitude?: number | null;
+  pickup_longitude?: number | null;
+  /** Free-text delivery address — only honoured server-side when the resolved
+   *  route's destination station is in a manual-address city (currently Kanpur);
+   *  silently ignored otherwise. Send alongside delivery_latitude/longitude. */
+  delivery_address_text?: string | null;
+  /** Coordinate resolved via Places Autocomplete (or manually) for the address above — required together with delivery_longitude if either is sent. */
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
   parcel_type: ParcelType;
   special_instructions?: string | null;
   /** Must be true — user must accept the prohibited-items declaration. */

@@ -102,3 +102,33 @@ export interface ProhibitedItemsResponse {
   items: ProhibitedItem[];
   version_id: number | null;
 }
+
+/** GET /places/autocomplete — server-side proxy for Google Places
+ * Autocomplete (see backend PlacesController for why this isn't called
+ * directly from the app: Google's endpoint doesn't send CORS headers). */
+export interface PlacesAutocompleteResponse {
+  predictions: { place_id: string; description: string }[];
+}
+
+/** GET /places/details — server-side proxy for Google Place Details.
+ * `location`/`formatted_address`/`postal_code` are all null together if the
+ * lookup failed for any reason (bad place_id, quota, Google outage) —
+ * callers should fall back to plain text with no coordinate, same as every
+ * other failure mode in this flow. */
+export interface PlacesDetailsResponse {
+  location: { lat: number; lng: number } | null;
+  /** Google's full formatted address (includes pincode) — prefer this over
+   * the autocomplete prediction's `description`, which is often just a
+   * landmark/POI name (e.g. "Kanpur Central") with no pincode. */
+  formatted_address: string | null;
+  postal_code: string | null;
+}
+
+/** GET /places/reverse-geocode — server-side proxy for Google reverse
+ * geocoding, used for the "use my current location" Zomato/Porter-style
+ * flow: turn a GPS fix into an editable address + pincode the customer can
+ * confirm or correct, instead of leaving the field blank. */
+export interface PlacesReverseGeocodeResponse {
+  formatted_address: string | null;
+  postal_code: string | null;
+}

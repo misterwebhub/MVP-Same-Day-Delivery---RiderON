@@ -134,6 +134,20 @@ class PartnerAssignmentController extends Controller
             $request,
         );
 
+        // Customer-facing "who's carrying my parcel" push — the customer
+        // app's OrderResource now also exposes the partner's name/phone/
+        // vehicle + route once partner_id is set, so this just alerts them
+        // that info is now available.
+        $partner->loadMissing('user');
+        $this->notifications->notifyUser(
+            $updated->customer_id,
+            'partner_assigned',
+            'Rider assigned',
+            "{$partner->user->name} accepted order {$updated->booking_reference} and is on the way to pickup.",
+            ['order_id' => $updated->id, 'screen' => 'OrderDetails'],
+            Notification::CHANNEL_PUSH,
+        );
+
         $updated->load(self::RELATIONS);
 
         return $this->success(new PartnerAssignmentResource($updated), 'Assignment accepted.');

@@ -35,6 +35,12 @@ class Order extends Model
         'receiver_name',
         'receiver_phone',
         'receiver_landmark',
+        'pickup_address_text',
+        'pickup_latitude',
+        'pickup_longitude',
+        'delivery_address_text',
+        'delivery_latitude',
+        'delivery_longitude',
         'price_breakdown',
         'total_amount_paise',
         'currency',
@@ -55,6 +61,10 @@ class Order extends Model
     {
         return [
             'booking_date' => 'date',
+            'pickup_latitude' => 'decimal:7',
+            'pickup_longitude' => 'decimal:7',
+            'delivery_latitude' => 'decimal:7',
+            'delivery_longitude' => 'decimal:7',
             'price_breakdown' => 'array',
             'total_amount_paise' => 'integer',
             'prohibited_items_declared_at' => 'datetime',

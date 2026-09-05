@@ -4,7 +4,8 @@ import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { Station } from '@rideron/types';
 import { Icon } from '../../../components/Icon';
 import { useAllStations, type StationOption } from '../hooks/useAllStations';
-import { StationPickerModal } from './StationPickerModal';
+import { MANUAL_ADDRESS_CITIES } from '../manualAddressCities';
+import { StationPickerModal, type ManualAddressCapture } from './StationPickerModal';
 
 /**
  * The From/To picker used on both Home (quick-pick, no dedicated screen) and
@@ -19,15 +20,39 @@ export function RouteFieldsCard({
   onSelectOrigin,
   onSelectDestination,
   onSwap,
+  onPickupAddressCapture,
+  onDeliveryAddressCapture,
 }: {
   originStation: Station | null;
   destinationStation: Station | null;
   onSelectOrigin: (station: StationOption) => void;
   onSelectDestination: (station: StationOption) => void;
   onSwap: () => void;
+  /** Fired when the pickup (Pickup From) station is confirmed — carries
+   * whatever manual address was entered inline (empty/null if the picked
+   * city doesn't support manual address, or none was entered). */
+  onPickupAddressCapture?: (capture: ManualAddressCapture) => void;
+  /** Same as above, for the drop-off (Drop At) station. */
+  onDeliveryAddressCapture?: (capture: ManualAddressCapture) => void;
 }) {
   const { stations, loading } = useAllStations();
   const [pickerOpenFor, setPickerOpenFor] = useState<'origin' | 'destination' | null>(null);
+
+  // With only two stations in the whole network (Kanpur/Lucknow today),
+  // picking one side leaves exactly one valid choice for the other — so
+  // auto-select it instead of making the customer tap twice. This naturally
+  // stops applying (falls back to manual selection) once a 3rd station
+  // exists, since then there's no single "remaining" station to infer.
+  const autoSelectPaired = (picked: StationOption, other: 'origin' | 'destination') => {
+    if (stations.length !== 2) return;
+    const remaining = stations.find((s) => s.id !== picked.id);
+    if (!remaining) return;
+    if (other === 'destination') {
+      onSelectDestination(remaining);
+    } else {
+      onSelectOrigin(remaining);
+    }
+  };
 
   return (
     <View style={styles.wrapper}>
@@ -87,8 +112,12 @@ export function RouteFieldsCard({
         loading={loading}
         selectedStationId={originStation?.id}
         disabledStationId={destinationStation?.id}
+        manualAddressCities={MANUAL_ADDRESS_CITIES}
+        allowCurrentLocation
+        onAddressCapture={onPickupAddressCapture}
         onSelect={(station) => {
           onSelectOrigin(station);
+          autoSelectPaired(station, 'destination');
           setPickerOpenFor(null);
         }}
         onClose={() => setPickerOpenFor(null)}
@@ -100,8 +129,11 @@ export function RouteFieldsCard({
         loading={loading}
         selectedStationId={destinationStation?.id}
         disabledStationId={originStation?.id}
+        manualAddressCities={MANUAL_ADDRESS_CITIES}
+        onAddressCapture={onDeliveryAddressCapture}
         onSelect={(station) => {
           onSelectDestination(station);
+          autoSelectPaired(station, 'origin');
           setPickerOpenFor(null);
         }}
         onClose={() => setPickerOpenFor(null)}
