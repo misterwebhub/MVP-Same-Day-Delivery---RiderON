@@ -54,6 +54,33 @@ class OrderController extends Controller
         ]);
     }
 
+    /**
+     * "Recheck Orders" — a focused daily audit view for ops: only orders
+     * that already have a partner matched (partner_id set), defaulting to
+     * today's booking date, with a date picker and search box to look at
+     * any other day. Unassigned orders (still waiting for a rider to accept
+     * from the mobile app) never show up here — see the "Awaiting partner
+     * assignment" stat/link on the dashboard for those.
+     */
+    public function recheck(Request $request): View
+    {
+        $bookingDate = $request->query('booking_date') ?: today()->toDateString();
+
+        $orders = $this->orders->paginate(15, [
+            'assigned_only' => true,
+            'booking_date' => $bookingDate,
+            'search' => $request->query('search'),
+        ]);
+
+        return view('admin.orders.recheck', [
+            'orders' => $orders,
+            'filters' => [
+                'booking_date' => $bookingDate,
+                'search' => $request->query('search'),
+            ],
+        ]);
+    }
+
     public function show(Order $order): View
     {
         $order->load(['customer', 'route.originStation', 'route.destinationStation', 'partner.user', 'statusHistory' => function ($query) {

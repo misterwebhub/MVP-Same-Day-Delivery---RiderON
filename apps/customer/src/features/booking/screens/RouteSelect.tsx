@@ -40,9 +40,11 @@ export function RouteSelect({ navigation }: Props) {
   const [pickupAddressText, setPickupAddressText] = useState(draft.pickupAddressText);
   const [pickupLatitude, setPickupLatitude] = useState(draft.pickupLatitude);
   const [pickupLongitude, setPickupLongitude] = useState(draft.pickupLongitude);
+  const [pickupPostalCode, setPickupPostalCode] = useState(draft.pickupPostalCode);
   const [deliveryAddressText, setDeliveryAddressText] = useState(draft.deliveryAddressText);
   const [deliveryLatitude, setDeliveryLatitude] = useState(draft.deliveryLatitude);
   const [deliveryLongitude, setDeliveryLongitude] = useState(draft.deliveryLongitude);
+  const [deliveryPostalCode, setDeliveryPostalCode] = useState(draft.deliveryPostalCode);
 
   const { route, resolving, error } = useRouteResolution(originStation, destinationStation);
 
@@ -80,12 +82,15 @@ export function RouteSelect({ navigation }: Props) {
     const pat = pickupAddressText;
     const plat = pickupLatitude;
     const plng = pickupLongitude;
+    const ppc = pickupPostalCode;
     setPickupAddressText(deliveryAddressText);
     setPickupLatitude(deliveryLatitude);
     setPickupLongitude(deliveryLongitude);
+    setPickupPostalCode(deliveryPostalCode);
     setDeliveryAddressText(pat);
     setDeliveryLatitude(plat);
     setDeliveryLongitude(plng);
+    setDeliveryPostalCode(ppc);
   };
 
   const onContinue = () => {
@@ -99,9 +104,11 @@ export function RouteSelect({ navigation }: Props) {
       pickupAddressText,
       pickupLatitude,
       pickupLongitude,
+      pickupPostalCode,
       deliveryAddressText,
       deliveryLatitude,
       deliveryLongitude,
+      deliveryPostalCode,
     });
     navigation.navigate('ParcelDetails');
   };
@@ -117,6 +124,8 @@ export function RouteSelect({ navigation }: Props) {
           <RouteFieldsCard
             originStation={originStation}
             destinationStation={destinationStation}
+            pickupAddressText={pickupAddressText}
+            deliveryAddressText={deliveryAddressText}
             onSelectOrigin={(station) => {
               setOriginStation(station);
               setOriginCity(station.city);
@@ -130,11 +139,13 @@ export function RouteSelect({ navigation }: Props) {
               setPickupAddressText(capture.text);
               setPickupLatitude(capture.latitude);
               setPickupLongitude(capture.longitude);
+              setPickupPostalCode(capture.postalCode);
             }}
             onDeliveryAddressCapture={(capture) => {
               setDeliveryAddressText(capture.text);
               setDeliveryLatitude(capture.latitude);
               setDeliveryLongitude(capture.longitude);
+              setDeliveryPostalCode(capture.postalCode);
             }}
           />
           <RoutePreviewCard route={route} resolving={resolving} error={error} />

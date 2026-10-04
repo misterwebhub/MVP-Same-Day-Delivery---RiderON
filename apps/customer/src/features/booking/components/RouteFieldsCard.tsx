@@ -22,6 +22,8 @@ export function RouteFieldsCard({
   onSwap,
   onPickupAddressCapture,
   onDeliveryAddressCapture,
+  pickupAddressText,
+  deliveryAddressText,
 }: {
   originStation: Station | null;
   destinationStation: Station | null;
@@ -34,6 +36,13 @@ export function RouteFieldsCard({
   onPickupAddressCapture?: (capture: ManualAddressCapture) => void;
   /** Same as above, for the drop-off (Drop At) station. */
   onDeliveryAddressCapture?: (capture: ManualAddressCapture) => void;
+  /** Once the customer captures a manual pickup address (Zomato/Porter-style
+   * flow), show that full address as the field's headline instead of the
+   * bare station name — with the station's city kept as a small subtitle
+   * underneath so context isn't lost. */
+  pickupAddressText?: string | null;
+  /** Same as above, for the drop-off (Drop At) field. */
+  deliveryAddressText?: string | null;
 }) {
   const { stations, loading } = useAllStations();
   const [pickerOpenFor, setPickerOpenFor] = useState<'origin' | 'destination' | null>(null);
@@ -72,9 +81,20 @@ export function RouteFieldsCard({
             accessibilityLabel="Choose pickup station"
           >
             <Text style={styles.fieldLabel}>PICKUP FROM</Text>
-            <Text style={[styles.fieldValue, !originStation && styles.fieldPlaceholder]} numberOfLines={1}>
-              {originStation?.name ?? 'Choose pickup station'}
-            </Text>
+            {pickupAddressText && originStation ? (
+              <>
+                <Text style={styles.fieldValue} numberOfLines={2}>
+                  {pickupAddressText}
+                </Text>
+                <Text style={styles.fieldSubtitle} numberOfLines={1}>
+                  {originStation.name}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.fieldValue, !originStation && styles.fieldPlaceholder]} numberOfLines={1}>
+                {originStation?.name ?? 'Choose pickup station'}
+              </Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -87,9 +107,20 @@ export function RouteFieldsCard({
             accessibilityLabel="Choose drop-off station"
           >
             <Text style={styles.fieldLabel}>DROP AT</Text>
-            <Text style={[styles.fieldValue, !destinationStation && styles.fieldPlaceholder]} numberOfLines={1}>
-              {destinationStation?.name ?? 'Choose drop-off station'}
-            </Text>
+            {deliveryAddressText && destinationStation ? (
+              <>
+                <Text style={styles.fieldValue} numberOfLines={2}>
+                  {deliveryAddressText}
+                </Text>
+                <Text style={styles.fieldSubtitle} numberOfLines={1}>
+                  {destinationStation.name}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.fieldValue, !destinationStation && styles.fieldPlaceholder]} numberOfLines={1}>
+                {destinationStation?.name ?? 'Choose drop-off station'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -191,6 +222,13 @@ const styles = StyleSheet.create({
   fieldValue: {
     ...typography.bodyStrong,
     color: color.textPrimary,
+  },
+  fieldSubtitle: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontFamily: typography.caption.fontFamily,
+    color: color.textSecondary,
+    marginTop: 1,
   },
   fieldPlaceholder: {
     color: color.textSecondary,

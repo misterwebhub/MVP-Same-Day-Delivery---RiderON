@@ -153,18 +153,20 @@ class OrderController extends Controller
 
         $route->loadMissing(['originStation.city', 'destinationStation.city']);
 
-        [$pickupAddressText, $pickupLatitude, $pickupLongitude] = $this->resolveManualAddress(
+        [$pickupAddressText, $pickupLatitude, $pickupLongitude, $pickupPostalCode] = $this->resolveManualAddress(
             $route->originStation?->city?->name,
             $request->input('pickup_address_text'),
             $request->input('pickup_latitude'),
             $request->input('pickup_longitude'),
+            $request->input('pickup_postal_code'),
         );
 
-        [$deliveryAddressText, $deliveryLatitude, $deliveryLongitude] = $this->resolveManualAddress(
+        [$deliveryAddressText, $deliveryLatitude, $deliveryLongitude, $deliveryPostalCode] = $this->resolveManualAddress(
             $route->destinationStation?->city?->name,
             $request->input('delivery_address_text'),
             $request->input('delivery_latitude'),
             $request->input('delivery_longitude'),
+            $request->input('delivery_postal_code'),
         );
 
         $order = Order::create([
@@ -183,9 +185,13 @@ class OrderController extends Controller
             'pickup_address_text' => $pickupAddressText,
             'pickup_latitude' => $pickupLatitude,
             'pickup_longitude' => $pickupLongitude,
+            'pickup_postal_code' => $pickupPostalCode,
             'delivery_address_text' => $deliveryAddressText,
             'delivery_latitude' => $deliveryLatitude,
             'delivery_longitude' => $deliveryLongitude,
+            'delivery_postal_code' => $deliveryPostalCode,
+            'door_pickup' => $quote['door_pickup'] ?? false,
+            'door_pickup_fee_paise' => $quote['door_pickup_fee_paise'] ?? 0,
             'price_breakdown' => $quote['breakdown'],
             'total_amount_paise' => $quote['total_amount_paise'],
             'currency' => 'INR',
@@ -252,25 +258,26 @@ class OrderController extends Controller
      * fixed station's own coordinates everywhere downstream (partner
      * distance calc, maps link). See OrderController::resolveManualAddress().
      *
-     * @return array{0: ?string, 1: ?float, 2: ?float} [address_text, lat, lng]
+     * @return array{0: ?string, 1: ?float, 2: ?float, 3: ?string} [address_text, lat, lng, postal_code]
      */
-    private function resolveManualAddress(?string $cityName, mixed $addressText, mixed $latitude, mixed $longitude): array
+    private function resolveManualAddress(?string $cityName, mixed $addressText, mixed $latitude, mixed $longitude, mixed $postalCode = null): array
     {
         $allowed = $cityName !== null && collect(config('parcel.manual_address_cities', []))
             ->contains(fn ($city) => strcasecmp($city, $cityName) === 0);
 
         if (! $allowed) {
-            return [null, null, null];
+            return [null, null, null, null];
         }
 
-        if ($addressText === null && $latitude === null && $longitude === null) {
-            return [null, null, null];
+        if ($addressText === null && $latitude === null && $longitude === null && $postalCode === null) {
+            return [null, null, null, null];
         }
 
         return [
             $addressText !== null ? (string) $addressText : null,
             $latitude !== null ? (float) $latitude : null,
             $longitude !== null ? (float) $longitude : null,
+            $postalCode !== null ? (string) $postalCode : null,
         ];
     }
 

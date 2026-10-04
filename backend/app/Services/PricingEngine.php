@@ -21,6 +21,7 @@ class PricingEngine
      *     quantity: int,
      *     declared_value_paise: int,
      *     coupon_code: ?string,
+     *     door_pickup: ?bool,
      * }  $input
      */
     public function quote(array $input): PricingQuote
@@ -49,7 +50,7 @@ class PricingEngine
         $baseRule = $activeRules->get(PricingRule::TYPE_BASE)?->first();
         $baseAmount = $baseRule ? $baseRule->amount_paise * $quantity : 0;
         if ($baseRule) {
-            $breakdown[] = ['label' => 'Base Fare', 'amount_paise' => $baseAmount];
+            $breakdown[] = ['label' => 'Shipment Cost', 'amount_paise' => $baseAmount];
         }
 
         $weightRule = $activeRules->get(PricingRule::TYPE_WEIGHT_SLAB)
@@ -81,6 +82,29 @@ class PricingEngine
 
         $discountedSubtotal = $subtotal - $discount;
 
+        // Optional door-pickup add-on. A coupon with waives_door_pickup zeroes
+        // just this fee (the rest of the order's pricing is unaffected by it) —
+        // distinct from the flat/percentage coupon discount handled above.
+        $doorPickupRequested = ! empty($input['door_pickup']);
+        $doorPickupFee = 0;
+        if ($doorPickupRequested) {
+            $doorPickupFee = (int) config('pricing.door_pickup_fee_paise', 8000);
+            $waivesDoorPickup = ! empty($input['coupon_code']) && (bool) Coupon::query()
+                ->where('code', $input['coupon_code'])
+                ->where('is_active', true)
+                ->where('valid_from', '<=', $now)
+                ->where('valid_until', '>=', $now)
+                ->where('waives_door_pickup', true)
+                ->exists();
+
+            if ($waivesDoorPickup) {
+                $breakdown[] = ['label' => 'Door Pickup (Free)', 'amount_paise' => 0];
+                $doorPickupFee = 0;
+            } else {
+                $breakdown[] = ['label' => 'Door Pickup', 'amount_paise' => $doorPickupFee];
+            }
+        }
+
         $platformFeeRule = $activeRules->get(PricingRule::TYPE_PLATFORM_FEE)?->first();
         $platformFee = 0;
         if ($platformFeeRule) {
@@ -90,7 +114,7 @@ class PricingEngine
             $breakdown[] = ['label' => 'Platform Fee', 'amount_paise' => $platformFee];
         }
 
-        $taxable = $discountedSubtotal + $platformFee;
+        $taxable = $discountedSubtotal + $platformFee + $doorPickupFee;
 
         $taxRule = $activeRules->get(PricingRule::TYPE_TAX)?->first();
         $tax = 0;
@@ -98,7 +122,7 @@ class PricingEngine
             $tax = $taxRule->amount_paise !== null
                 ? $taxRule->amount_paise
                 : (int) round($taxable * ((float) $taxRule->percentage / 100));
-            $breakdown[] = ['label' => 'Tax', 'amount_paise' => $tax];
+            $breakdown[] = ['label' => 'GST Tax', 'amount_paise' => $tax];
         }
 
         $total = $taxable + $tax;
@@ -112,6 +136,8 @@ class PricingEngine
             'quantity' => $quantity,
             'declared_value_paise' => (int) $input['declared_value_paise'],
             'coupon_code' => $input['coupon_code'] ?? null,
+            'door_pickup' => $doorPickupRequested,
+            'door_pickup_fee_paise' => $doorPickupFee,
             'breakdown' => $breakdown,
             'total_amount_paise' => $total,
             'expires_at' => $expiresAt->toIso8601String(),

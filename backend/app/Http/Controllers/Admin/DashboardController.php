@@ -32,6 +32,16 @@ class DashboardController extends Controller
             ->where('status', OrderStatus::RIDER_ASSIGNMENT_PENDING)
             ->count();
 
+        // All-time (not just today) count of orders still waiting for a
+        // rider to accept from the mobile app — no partner is ever
+        // auto-assigned on booking (see PartnerAssignmentService), so this
+        // is the true size of the unassigned pool every eligible rider can
+        // currently see and claim from.
+        $totalUnassigned = Order::query()
+            ->where('status', OrderStatus::RIDER_ASSIGNMENT_PENDING)
+            ->whereNull('partner_id')
+            ->count();
+
         $countFor = fn (array $statuses): int => Order::query()
             ->whereDate('booking_date', $today)
             ->whereIn('status', $statuses)
@@ -82,6 +92,7 @@ class DashboardController extends Controller
             'bookingsCount' => $bookingsCount,
             'revenuePaise' => $revenuePaise,
             'pendingAssignment' => $pendingAssignment,
+            'totalUnassigned' => $totalUnassigned,
             'funnel' => $funnel,
             'activePartners' => $activePartners,
             'verifiedPartners' => $verifiedPartners,

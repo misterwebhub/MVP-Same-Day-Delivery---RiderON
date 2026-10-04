@@ -178,11 +178,12 @@ export function createResources(http: HttpClient) {
 
       /** Customer-only — attaches a photo of the parcel to the order at booking time
        * (or any time before delivery), so the rider can visually confirm the physical
-       * parcel matches what was declared. */
-      uploadParcelPhoto: (orderId: number, file: FormDataFile) =>
+       * parcel matches what was declared. `type` defaults server-side to 'photo';
+       * pass 'invoice' for the bill/invoice image required above declared value ₹1000. */
+      uploadParcelPhoto: (orderId: number, file: FormDataFile, type?: 'photo' | 'invoice') =>
         http.request<Order>(`/orders/${orderId}/parcel/photos`, {
           method: 'POST',
-          formData: { photo: file },
+          formData: type ? { photo: file, type } : { photo: file },
         }),
 
       /** Partner-only (role:partner) — verifies the pickup/delivery OTP the

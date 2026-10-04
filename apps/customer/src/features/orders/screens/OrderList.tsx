@@ -133,7 +133,8 @@ export function OrderList({ navigation }: Props) {
             <View style={styles.rowText}>
               <Text style={styles.rowRef}>{item.booking_reference}</Text>
               <Text style={styles.rowRoute} numberOfLines={1}>
-                {item.route?.origin_station?.name ?? '—'} → {item.route?.destination_station?.name ?? '—'}
+                {item.pickup_address?.text ?? item.route?.origin_station?.name ?? '—'} →{' '}
+                {item.delivery_address?.text ?? item.route?.destination_station?.name ?? '—'}
               </Text>
               <Text style={styles.rowMeta} numberOfLines={1}>
                 {item.booking_date ? formatDateLabel(item.booking_date) : '—'}

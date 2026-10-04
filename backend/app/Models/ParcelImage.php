@@ -12,9 +12,14 @@ class ParcelImage extends Model
 
     public $timestamps = false;
 
+    public const TYPE_PHOTO = 'photo';
+
+    public const TYPE_INVOICE = 'invoice';
+
     protected $fillable = [
         'parcel_id',
         'storage_path',
+        'type',
         'created_at',
     ];
 

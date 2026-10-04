@@ -21,12 +21,32 @@
                 @include('admin.components.stat-card', ['label' => "Today's bookings", 'value' => $bookingsCount, 'icon' => 'chart'])
                 @include('admin.components.stat-card', ['label' => "Today's revenue", 'value' => '₹'.number_format($revenuePaise / 100, 2), 'icon' => 'money'])
                 @include('admin.components.stat-card', [
-                    'label' => 'Awaiting partner assignment',
+                    'label' => 'Awaiting partner assignment (today)',
                     'value' => $pendingAssignment,
                     'color' => $pendingAssignment > 0 ? 'warning' : 'success',
                     'icon' => 'clock',
                 ])
             </div>
+        </section>
+
+        <section>
+            <h2 class="mb-3 text-h2 font-heading text-text-primary">Rider assignment</h2>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                @include('admin.components.stat-card', [
+                    'label' => 'Total unassigned orders (all dates)',
+                    'value' => $totalUnassigned,
+                    'color' => $totalUnassigned > 0 ? 'warning' : 'success',
+                    'icon' => 'clock',
+                    'href' => route('admin.orders.index', ['status' => 'RIDER_ASSIGNMENT_PENDING']),
+                ])
+                @include('admin.components.stat-card', [
+                    'label' => "Recheck today's assigned orders",
+                    'value' => 'Open tab',
+                    'icon' => 'check',
+                    'href' => route('admin.orders.recheck'),
+                ])
+            </div>
+            <p class="mt-2 text-caption text-text-secondary">No rider is ever auto-assigned on booking — every eligible partner sees these in their app's "Unassigned" tab and claims one themselves.</p>
         </section>
 
         <section>

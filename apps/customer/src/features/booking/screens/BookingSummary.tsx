@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
-import { PARCEL_TYPE_LABELS, WEIGHT_SLAB_LABELS, type Order, type ProhibitedItem } from '@rideron/types';
+import { INVOICE_REQUIRED_ABOVE_PAISE, PARCEL_TYPE_LABELS, WEIGHT_SLAB_LABELS, type Order, type ProhibitedItem } from '@rideron/types';
+import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import { Button } from '../../../components/Button';
 import { Checkbox } from '../../../components/Checkbox';
+import { Icon } from '../../../components/Icon';
 import { ImageViewerModal } from '../../../components/ImageViewerModal';
 import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
 import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
@@ -27,6 +29,18 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Stacked (label above value) instead of the side-by-side SummaryRow above —
+ * used for the captured manual address, which can run to a full sentence and
+ * would otherwise get squeezed against the row's right edge. */
+function SummaryBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.block}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.blockValue}>{value}</Text>
+    </View>
+  );
+}
+
 /** Review + server-quoted price + prohibited-items declaration, per docs/01's
  * "Booking Summary" step — the price quote (formerly its own PriceBreakdown
  * screen) is fetched inline here so the flow finishes in fewer taps. */
@@ -39,6 +53,7 @@ export function BookingSummary({ navigation }: Props) {
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [invoiceCompressing, setInvoiceCompressing] = useState(false);
 
   useEffect(() => {
     apiClient.catalog
@@ -69,6 +84,7 @@ export function BookingSummary({ navigation }: Props) {
         quantity: draft.quantity,
         declared_value_paise: draft.declaredValuePaise,
         coupon_code: null,
+        door_pickup: draft.doorPickup,
       })
       .then((quote) => {
         if (!cancelled) update({ quote });
@@ -83,9 +99,30 @@ export function BookingSummary({ navigation }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route?.id, schedule?.route_schedule_id, draft.weightSlab, draft.quantity, draft.declaredValuePaise]);
+  }, [route?.id, schedule?.route_schedule_id, draft.weightSlab, draft.quantity, draft.declaredValuePaise, draft.doorPickup]);
 
   const quote = draft.quote;
+  const invoiceRequired = draft.declaredValuePaise > INVOICE_REQUIRED_ABOVE_PAISE;
+
+  /** Same in-app chooser as ParcelDetails' photo picker, reused here for the
+   * bill/invoice image since it's only needed once declared value crosses the
+   * threshold (rare enough not to warrant its own step). */
+  const onAddInvoicePhoto = async () => {
+    setInvoiceCompressing(true);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError('Photo permission needed — allow photo library access to attach the bill/invoice.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+      if (result.canceled || !result.assets?.[0]) return;
+      update({ invoicePhotoUri: result.assets[0].uri });
+      setError(null);
+    } finally {
+      setInvoiceCompressing(false);
+    }
+  };
 
   const onConfirm = async () => {
     if (!draft.prohibitedItemsAccepted) {
@@ -98,6 +135,10 @@ export function BookingSummary({ navigation }: Props) {
     }
     if (!draft.parcelPhotoUri) {
       setError('A parcel photo is required — go back to Parcel Details to add one.');
+      return;
+    }
+    if (invoiceRequired && !draft.invoicePhotoUri) {
+      setError('A bill/invoice photo is required for parcels declared above ₹1000 — add one below.');
       return;
     }
     setSubmitting(true);
@@ -125,9 +166,11 @@ export function BookingSummary({ navigation }: Props) {
           pickup_address_text: draft.pickupAddressText || null,
           pickup_latitude: draft.pickupLatitude,
           pickup_longitude: draft.pickupLongitude,
+          pickup_postal_code: draft.pickupPostalCode,
           delivery_address_text: draft.deliveryAddressText || null,
           delivery_latitude: draft.deliveryLatitude,
           delivery_longitude: draft.deliveryLongitude,
+          delivery_postal_code: draft.deliveryPostalCode,
           parcel_type: draft.parcelType,
           special_instructions: draft.specialInstructions || null,
           prohibited_items_accepted: true,
@@ -163,6 +206,19 @@ export function BookingSummary({ navigation }: Props) {
         }
       }
 
+      if (invoiceRequired && draft.invoicePhotoUri && order.parcel?.invoice_photos.length === 0) {
+        try {
+          await apiClient.orders.uploadParcelPhoto(
+            order.id,
+            { uri: draft.invoicePhotoUri, name: 'invoice.jpg', type: 'image/jpeg' },
+            'invoice',
+          );
+        } catch (e) {
+          setError(e instanceof ApiClientError ? e.message : 'Could not upload your bill/invoice photo. Please try again.');
+          return;
+        }
+      }
+
       navigation.navigate('Payment', { orderId: order.id, paymentId: order.payment.id });
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : 'Could not create the order. Please try again.');
@@ -178,7 +234,19 @@ export function BookingSummary({ navigation }: Props) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Route</Text>
           <SummaryRow label="From" value={route?.origin_station?.name ?? '—'} />
+          {draft.pickupAddressText ? (
+            <SummaryBlock
+              label="Pickup address"
+              value={draft.pickupPostalCode ? `${draft.pickupAddressText} — ${draft.pickupPostalCode}` : draft.pickupAddressText}
+            />
+          ) : null}
           <SummaryRow label="To" value={route?.destination_station?.name ?? '—'} />
+          {draft.deliveryAddressText ? (
+            <SummaryBlock
+              label="Delivery address"
+              value={draft.deliveryPostalCode ? `${draft.deliveryAddressText} — ${draft.deliveryPostalCode}` : draft.deliveryAddressText}
+            />
+          ) : null}
           <SummaryRow label="Pickup date" value={draft.bookingDate ? formatDateLabel(draft.bookingDate) : '—'} />
           <SummaryRow label="Time slot" value={schedule ? `${schedule.departure_time} – ${schedule.arrival_time}` : '—'} />
         </View>
@@ -200,6 +268,43 @@ export function BookingSummary({ navigation }: Props) {
               <Image source={{ uri: draft.parcelPhotoUri }} style={styles.photoThumb} />
             </TouchableOpacity>
           ) : null}
+
+          {invoiceRequired ? (
+            <View style={styles.invoiceBlock}>
+              <Text style={styles.invoiceHint}>
+                Declared value is above ₹1000 — a bill/invoice photo is required for the claim.
+              </Text>
+              {invoiceCompressing ? (
+                <View style={styles.photoAddBox}>
+                  <ActivityIndicator color={color.primary} />
+                </View>
+              ) : draft.invoicePhotoUri ? (
+                <TouchableOpacity
+                  style={styles.photoThumbWrap}
+                  activeOpacity={0.85}
+                  onPress={() => setPreviewUri(draft.invoicePhotoUri)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View invoice photo full size"
+                >
+                  <Image source={{ uri: draft.invoicePhotoUri }} style={styles.photoThumb} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.photoAddBox} activeOpacity={0.85} onPress={onAddInvoicePhoto}>
+                  <Icon name="document-attach-outline" size={22} color={color.primary} />
+                  <Text style={styles.photoAddText}>Add bill/invoice photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Door Pickup</Text>
+          <Checkbox
+            checked={draft.doorPickup}
+            onToggle={() => update({ doorPickup: !draft.doorPickup })}
+            label="Have the rider collect your parcel from your door"
+          />
         </View>
 
         <View style={styles.card}>
@@ -227,7 +332,7 @@ export function BookingSummary({ navigation }: Props) {
               ))
             : null}
           <View style={[styles.row, styles.totalRow]}>
-            <Text style={styles.cardTitle}>Total</Text>
+            <Text style={styles.cardTitle}>Final</Text>
             <Text style={styles.total}>{quote ? formatPaise(quote.total_amount_paise) : '—'}</Text>
           </View>
         </View>
@@ -316,6 +421,15 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: color.textPrimary,
   },
+  block: {
+    paddingVertical: space[1],
+    paddingLeft: space[2],
+  },
+  blockValue: {
+    ...typography.body,
+    color: color.textPrimary,
+    marginTop: 2,
+  },
   total: {
     ...typography.h2,
     color: color.primary,
@@ -331,6 +445,29 @@ const styles = StyleSheet.create({
   photoThumb: {
     width: '100%',
     height: '100%',
+  },
+  invoiceBlock: {
+    marginTop: space[3],
+  },
+  invoiceHint: {
+    ...typography.caption,
+    color: color.textSecondary,
+    marginBottom: space[2],
+  },
+  photoAddBox: {
+    height: 72,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: color.primary,
+    backgroundColor: color.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space[1],
+  },
+  photoAddText: {
+    ...typography.bodyStrong,
+    color: color.primary,
   },
   prohibitedLink: {
     ...typography.bodyStrong,

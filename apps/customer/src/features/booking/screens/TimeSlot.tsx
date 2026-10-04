@@ -9,7 +9,6 @@ import { Button } from '../../../components/Button';
 import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
 import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { StepProgress } from '../../../components/StepProgress';
-import { formatPaise } from '../../../utils/currency';
 import { toYMD, nextDays, WEEKDAYS, MONTHS } from '../../../utils/date';
 import { useBookingDraft } from '../BookingDraftContext';
 import type { BookingStackParamList } from '../../../navigation/types';
@@ -18,12 +17,17 @@ type Props = NativeStackScreenProps<BookingStackParamList, 'TimeSlot'>;
 
 const DATE_OPTIONS = nextDays(7);
 
-/** Booking date + GET /routes/{id}/schedules picker, per docs/01's "Delivery Time Slot" step. */
+/**
+ * Pickup date + auto-selected departure. Per product direction, the slot
+ * picker itself is removed from the customer-facing UI — we still fetch
+ * real schedule/capacity data from GET /routes/{id}/schedules (required by
+ * PricingEngine.quote()/OrderController.store()) and auto-pick the earliest
+ * non-full departure for that date, showing only an instructional note.
+ */
 export function TimeSlot({ navigation }: Props) {
   const { draft, update } = useBookingDraft();
   const [bookingDate, setBookingDate] = useState<string>(draft.bookingDate ?? toYMD(DATE_OPTIONS[0]));
-  const [schedules, setSchedules] = useState<RouteScheduleAvailability[]>([]);
-  const [selectedSchedule, setSelectedSchedule] = useState<RouteScheduleAvailability | null>(draft.schedule);
+  const [selectedSchedule, setSelectedSchedule] = useState<RouteScheduleAvailability | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomPadding = useSafeBottomPadding(space[6]);
@@ -39,10 +43,17 @@ export function TimeSlot({ navigation }: Props) {
     apiClient.catalog
       .getRouteSchedules(routeId, bookingDate)
       .then((result) => {
-        if (!cancelled) setSchedules(result);
+        if (cancelled) return;
+        const earliestAvailable = result
+          .filter((schedule) => schedule.seats_available > 0)
+          .sort((a, b) => a.departure_time.localeCompare(b.departure_time))[0];
+        setSelectedSchedule(earliestAvailable ?? null);
+        if (!earliestAvailable) {
+          setError('No departures available for this date — try another date.');
+        }
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof ApiClientError ? e.message : 'Could not load time slots.');
+        if (!cancelled) setError(e instanceof ApiClientError ? e.message : 'Could not load departure options.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -54,7 +65,7 @@ export function TimeSlot({ navigation }: Props) {
 
   const onContinue = () => {
     if (!selectedSchedule) {
-      setError('Pick a time slot to continue.');
+      setError('No departure available for this date — try another date.');
       return;
     }
     update({ bookingDate, schedule: selectedSchedule });
@@ -84,33 +95,13 @@ export function TimeSlot({ navigation }: Props) {
           })}
         </View>
 
-        <Text style={styles.sectionLabel}>Available slots</Text>
         {loading ? <ActivityIndicator color={color.primary} /> : null}
-        {!loading && schedules.length === 0 ? (
-          <Text style={styles.empty}>No slots available for this date — try another date.</Text>
+        {!loading && selectedSchedule ? (
+          <Text style={styles.instruction}>
+            Your parcel will be picked up on the selected date and dispatched on the next available ride — we'll notify
+            you once a rider accepts.
+          </Text>
         ) : null}
-        {schedules.map((schedule) => {
-          const selected = selectedSchedule?.route_schedule_id === schedule.route_schedule_id;
-          const full = schedule.seats_available <= 0;
-          return (
-            <TouchableOpacity
-              key={schedule.route_schedule_id}
-              style={[styles.scheduleRow, selected && styles.scheduleRowSelected, full && styles.scheduleRowDisabled]}
-              onPress={() => !full && setSelectedSchedule(schedule)}
-              disabled={full}
-            >
-              <View>
-                <Text style={styles.scheduleTime}>
-                  {schedule.departure_time} → {schedule.arrival_time}
-                </Text>
-                <Text style={styles.scheduleMeta}>
-                  {full ? 'Fully booked' : `${schedule.seats_available} seats left`}
-                </Text>
-              </View>
-              <Text style={styles.schedulePrice}>from {formatPaise(schedule.price_from)}</Text>
-            </TouchableOpacity>
-          );
-        })}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
@@ -171,40 +162,14 @@ const styles = StyleSheet.create({
   dateChipTextSelected: {
     color: color.textInverse,
   },
-  empty: {
+  instruction: {
     ...typography.body,
     color: color.textSecondary,
-  },
-  scheduleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: color.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: color.border,
     padding: space[4],
-    marginBottom: space[2],
-  },
-  scheduleRowSelected: {
-    borderColor: color.primary,
-    backgroundColor: color.primaryTint,
-  },
-  scheduleRowDisabled: {
-    opacity: 0.5,
-  },
-  scheduleTime: {
-    ...typography.bodyStrong,
-    color: color.textPrimary,
-  },
-  scheduleMeta: {
-    ...typography.caption,
-    color: color.textSecondary,
-    marginTop: 2,
-  },
-  schedulePrice: {
-    ...typography.caption,
-    color: color.textSecondary,
   },
   error: {
     ...typography.caption,

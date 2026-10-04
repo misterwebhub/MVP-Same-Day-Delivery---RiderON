@@ -3,10 +3,12 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "rideron-react"
   ],
   "scripts": {
     "customer": "npm run start --workspace=apps/customer",
-    "customer:web": "npm run web --workspace=apps/customer"
+    "customer:web": "npm run web --workspace=apps/customer",
+    "web": "npm run dev --workspace=rideron-react"
   }
 }

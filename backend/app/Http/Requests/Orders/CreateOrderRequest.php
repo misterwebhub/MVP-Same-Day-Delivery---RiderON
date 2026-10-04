@@ -34,9 +34,11 @@ class CreateOrderRequest extends FormRequest
             'pickup_address_text' => ['nullable', 'string', 'max:500'],
             'pickup_latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:pickup_longitude'],
             'pickup_longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:pickup_latitude'],
+            'pickup_postal_code' => ['nullable', 'string', 'max:10'],
             'delivery_address_text' => ['nullable', 'string', 'max:500'],
             'delivery_latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:delivery_longitude'],
             'delivery_longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:delivery_latitude'],
+            'delivery_postal_code' => ['nullable', 'string', 'max:10'],
             'parcel_type' => ['required', Rule::in([
                 Parcel::TYPE_DOCUMENTS,
                 Parcel::TYPE_CLOTHING,

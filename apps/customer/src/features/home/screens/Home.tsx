@@ -81,9 +81,11 @@ export function Home({ navigation }: Props) {
   const [quickPickupAddressText, setQuickPickupAddressText] = useState(draft.pickupAddressText);
   const [quickPickupLatitude, setQuickPickupLatitude] = useState(draft.pickupLatitude);
   const [quickPickupLongitude, setQuickPickupLongitude] = useState(draft.pickupLongitude);
+  const [quickPickupPostalCode, setQuickPickupPostalCode] = useState(draft.pickupPostalCode);
   const [quickDeliveryAddressText, setQuickDeliveryAddressText] = useState(draft.deliveryAddressText);
   const [quickDeliveryLatitude, setQuickDeliveryLatitude] = useState(draft.deliveryLatitude);
   const [quickDeliveryLongitude, setQuickDeliveryLongitude] = useState(draft.deliveryLongitude);
+  const [quickDeliveryPostalCode, setQuickDeliveryPostalCode] = useState(draft.deliveryPostalCode);
 
   const load = useCallback(async () => {
     const [ordersResult, routesResult] = await Promise.allSettled([
@@ -125,9 +127,11 @@ export function Home({ navigation }: Props) {
         pickupAddressText: quickPickupAddressText,
         pickupLatitude: quickPickupLatitude,
         pickupLongitude: quickPickupLongitude,
+        pickupPostalCode: quickPickupPostalCode,
         deliveryAddressText: quickDeliveryAddressText,
         deliveryLatitude: quickDeliveryLatitude,
         deliveryLongitude: quickDeliveryLongitude,
+        deliveryPostalCode: quickDeliveryPostalCode,
       });
       navigation.getParent()?.navigate('Booking', { screen: 'ParcelDetails' });
       return;
@@ -198,6 +202,8 @@ export function Home({ navigation }: Props) {
           <RouteFieldsCard
             originStation={quickOriginStation}
             destinationStation={quickDestinationStation}
+            pickupAddressText={quickPickupAddressText}
+            deliveryAddressText={quickDeliveryAddressText}
             onSelectOrigin={(station) => {
               setQuickOriginStation(station);
               setQuickOriginCity(station.city);
@@ -219,22 +225,27 @@ export function Home({ navigation }: Props) {
               const pat = quickPickupAddressText;
               const plat = quickPickupLatitude;
               const plng = quickPickupLongitude;
+              const ppc = quickPickupPostalCode;
               setQuickPickupAddressText(quickDeliveryAddressText);
               setQuickPickupLatitude(quickDeliveryLatitude);
               setQuickPickupLongitude(quickDeliveryLongitude);
+              setQuickPickupPostalCode(quickDeliveryPostalCode);
               setQuickDeliveryAddressText(pat);
               setQuickDeliveryLatitude(plat);
               setQuickDeliveryLongitude(plng);
+              setQuickDeliveryPostalCode(ppc);
             }}
             onPickupAddressCapture={(capture) => {
               setQuickPickupAddressText(capture.text);
               setQuickPickupLatitude(capture.latitude);
               setQuickPickupLongitude(capture.longitude);
+              setQuickPickupPostalCode(capture.postalCode);
             }}
             onDeliveryAddressCapture={(capture) => {
               setQuickDeliveryAddressText(capture.text);
               setQuickDeliveryLatitude(capture.latitude);
               setQuickDeliveryLongitude(capture.longitude);
+              setQuickDeliveryPostalCode(capture.postalCode);
             }}
           />
           <RoutePreviewCard route={quickRoute} resolving={quickResolving} error={quickError} />
@@ -296,7 +307,8 @@ export function Home({ navigation }: Props) {
                 <View style={styles.orderRowText}>
                   <Text style={styles.orderRowRef}>{order.booking_reference}</Text>
                   <Text style={styles.orderRowRoute} numberOfLines={1}>
-                    {order.route?.origin_station?.name ?? '—'} → {order.route?.destination_station?.name ?? '—'}
+                    {order.pickup_address?.text ?? order.route?.origin_station?.name ?? '—'} →{' '}
+                    {order.delivery_address?.text ?? order.route?.destination_station?.name ?? '—'}
                   </Text>
                 </View>
                 <Text style={styles.orderRowAmount}>{formatPaise(order.total_amount_paise)}</Text>

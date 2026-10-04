@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { Order } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
+import RazorpayCheckout, { type RazorpayErrorResult, type RazorpaySuccessResult } from 'react-native-razorpay';
+import { openRazorpayCheckoutWeb } from '../../../utils/razorpayWeb';
 import { Button } from '../../../components/Button';
 import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
 import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
@@ -16,13 +18,23 @@ import type { BookingStackParamList } from '../../../navigation/types';
 type Props = NativeStackScreenProps<BookingStackParamList, 'Payment'>;
 
 /**
- * Test-mode checkout screen. backend PAYMENT_DRIVER=mock in dev (per the
- * user's "use testing bypass payment gateway" brief) — MockPaymentGateway
- * never contacts a real processor, it just logs the call and honours a
- * `force_failure` flag (see backend/app/Services/PaymentGateway/MockPaymentGateway.php).
- * This screen calls the *real* POST /payments/{id}/verify endpoint either
- * way, so the order/payment/OTP state transitions it triggers are genuine,
- * not simulated client-side.
+ * Checkout screen. Branches on `order.payment.provider` (set server-side from
+ * `PAYMENT_DRIVER`, see backend/app/Http/Controllers/Api/V1/OrderController.php):
+ *
+ * - `razorpay`: opens the real Razorpay Checkout (native SDK via
+ *   react-native-razorpay, or the hosted checkout.js overlay on web — that
+ *   package has no web implementation) using the `razorpay_key_id` +
+ *   `provider_order_id` the backend already created via
+ *   RazorpayGateway::createOrder(). The genuine
+ *   razorpay_payment_id/order_id/signature Razorpay hands back are then sent
+ *   to POST /payments/{id}/verify, which HMAC-verifies them server-side
+ *   (RazorpayGateway::verifySignature) before transitioning the order.
+ * - `mock`: unchanged "TEST MODE" bypass buttons — MockPaymentGateway never
+ *   contacts a real processor (see backend/app/Services/PaymentGateway/MockPaymentGateway.php).
+ *
+ * Either way this screen calls the *real* POST /payments/{id}/verify
+ * endpoint, so the order/payment/OTP state transitions it triggers are
+ * genuine, not simulated client-side.
  */
 export function Payment({ route, navigation }: Props) {
   const { orderId, paymentId } = route.params;
@@ -51,7 +63,67 @@ export function Payment({ route, navigation }: Props) {
     };
   }, [orderId]);
 
-  const pay = async (forceFailure: boolean) => {
+  const isRazorpay = order?.payment?.provider === 'razorpay';
+
+  const finish = async (result: { payment_status: string }) => {
+    if (result.payment_status === 'success') {
+      reset();
+      navigation.replace('Confirmation', { orderId });
+    } else {
+      setError('Payment was not successful. Please try again.');
+    }
+  };
+
+  /** Real gateway path: open Razorpay Checkout, then verify whatever it
+   * actually returns — never fabricated values (see MockPaymentGateway path
+   * below for the old test-only shortcut). */
+  const payWithRazorpay = async () => {
+    if (!order?.payment?.razorpay_key_id) return;
+    setPaying(true);
+    setError(null);
+    try {
+      const options = {
+        key: order.payment.razorpay_key_id,
+        amount: order.payment.amount_paise,
+        currency: order.currency,
+        order_id: order.payment.provider_order_id,
+        name: 'RiderON',
+        description: `Order ${order.booking_reference}`,
+        prefill: {
+          name: order.sender.name,
+          contact: order.sender.phone,
+        },
+        theme: { color: color.primary },
+      };
+      const checkoutResult: RazorpaySuccessResult =
+        Platform.OS === 'web' ? await openRazorpayCheckoutWeb(options) : await RazorpayCheckout.open(options);
+
+      const result = await apiClient.payments.verify(paymentId, {
+        razorpay_order_id: checkoutResult.razorpay_order_id,
+        razorpay_payment_id: checkoutResult.razorpay_payment_id,
+        razorpay_signature: checkoutResult.razorpay_signature,
+        force_failure: false,
+      });
+      await finish(result);
+    } catch (e) {
+      if (e instanceof ApiClientError) {
+        setError(e.message);
+      } else {
+        // Razorpay's own reject shape (both native SDK and our web shim) —
+        // includes the user just closing the checkout overlay.
+        const razorpayError = e as RazorpayErrorResult;
+        setError(razorpayError?.error?.description ?? razorpayError?.description ?? 'Payment was cancelled or failed. Please try again.');
+      }
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  /** Test-only bypass — still calls the real verify endpoint, but
+   * MockPaymentGateway.verifySignature() ignores the fabricated values below
+   * and just honours `force_failure`. Only reachable when
+   * PAYMENT_DRIVER=mock server-side. */
+  const payWithMock = async (forceFailure: boolean) => {
     if (!order?.payment) return;
     setPaying(true);
     setError(null);
@@ -62,12 +134,7 @@ export function Payment({ route, navigation }: Props) {
         razorpay_signature: `mock_signature_${Date.now()}`,
         force_failure: forceFailure,
       });
-      if (result.payment_status === 'success') {
-        reset();
-        navigation.replace('Confirmation', { orderId });
-      } else {
-        setError('Payment was not successful. Please try again.');
-      }
+      await finish(result);
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : 'Payment failed. Please try again.');
     } finally {
@@ -83,7 +150,7 @@ export function Payment({ route, navigation }: Props) {
 
         {!loading && order ? (
           <View style={styles.card}>
-            <Text style={styles.badge}>TEST MODE</Text>
+            {!isRazorpay ? <Text style={styles.badge}>TEST MODE</Text> : null}
             <Text style={styles.title}>Complete your payment</Text>
             <Text style={styles.subtitle}>Order {order.booking_reference}</Text>
             <Text style={styles.amount}>{formatPaise(order.total_amount_paise)}</Text>
@@ -97,10 +164,16 @@ export function Payment({ route, navigation }: Props) {
       </ScrollView>
       {order ? (
         <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
-          <Button title={`Pay ${formatPaise(order.total_amount_paise)}`} onPress={() => pay(false)} loading={paying} />
-          <Text style={styles.failureLink} onPress={() => (paying ? undefined : pay(true))}>
-            Simulate a failed payment (test)
-          </Text>
+          {isRazorpay ? (
+            <Button title={`Pay ${formatPaise(order.total_amount_paise)}`} onPress={payWithRazorpay} loading={paying} />
+          ) : (
+            <>
+              <Button title={`Pay ${formatPaise(order.total_amount_paise)}`} onPress={() => payWithMock(false)} loading={paying} />
+              <Text style={styles.failureLink} onPress={() => (paying ? undefined : payWithMock(true))}>
+                Simulate a failed payment (test)
+              </Text>
+            </>
+          )}
         </View>
       ) : null}
     </KeyboardSafeScreen>

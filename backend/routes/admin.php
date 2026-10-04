@@ -60,6 +60,7 @@ Route::middleware('admin')->group(function () {
     Route::resource('delivery-partners', DeliveryPartnerController::class)->except(['show']);
 
     Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('orders/recheck', [OrderController::class, 'recheck'])->name('orders.recheck');
     Route::get('orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('orders/{order}/assign-partner', [OrderController::class, 'assignPartner'])->name('orders.assign-partner');
     Route::post('orders/{order}/force-cancel', [OrderController::class, 'forceCancel'])->name('orders.force-cancel');

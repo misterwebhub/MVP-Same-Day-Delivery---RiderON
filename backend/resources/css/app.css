@@ -106,6 +106,10 @@
         @apply relative flex items-center gap-4 overflow-hidden rounded-lg border border-border bg-surface p-5 shadow-card;
     }
 
+    .stat-card-link {
+        @apply transition-colors hover:border-primary hover:shadow-md;
+    }
+
     .stat-icon {
         @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-h2;
     }

@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Models\OtpVerification;
+use App\Models\Parcel;
+use App\Models\ParcelImage;
 use App\Services\Otp\OtpService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -62,6 +64,7 @@ class OrderResource extends JsonResource
                 'text' => $this->pickup_address_text,
                 'latitude' => $this->pickup_latitude !== null ? (float) $this->pickup_latitude : null,
                 'longitude' => $this->pickup_longitude !== null ? (float) $this->pickup_longitude : null,
+                'postal_code' => $this->pickup_postal_code,
             ] : null,
             // Mirrors pickup_address above but for the delivery/destination
             // end (currently only opts in for Kanpur-as-destination).
@@ -69,6 +72,7 @@ class OrderResource extends JsonResource
                 'text' => $this->delivery_address_text,
                 'latitude' => $this->delivery_latitude !== null ? (float) $this->delivery_latitude : null,
                 'longitude' => $this->delivery_longitude !== null ? (float) $this->delivery_longitude : null,
+                'postal_code' => $this->delivery_postal_code,
             ] : null,
             'parcel' => $this->whenLoaded('parcel', fn () => $this->parcel === null ? null : [
                 'parcel_type' => $this->parcel->parcel_type,
@@ -77,9 +81,24 @@ class OrderResource extends JsonResource
                 'declared_value_paise' => $this->parcel->declared_value_paise,
                 'special_instructions' => $this->parcel->special_instructions,
                 'photos' => $this->parcel->relationLoaded('images')
-                    ? $this->parcel->images->map(fn ($image) => url(Storage::disk('public')->url($image->storage_path)))->values()
+                    ? $this->parcel->images
+                        ->where('type', ParcelImage::TYPE_PHOTO)
+                        ->map(fn ($image) => url(Storage::disk('public')->url($image->storage_path)))
+                        ->values()
+                    : [],
+                // Bill/invoice image required once declared_value_paise crosses
+                // Parcel::INVOICE_REQUIRED_ABOVE_PAISE (see docs/whatsapp brief:
+                // "1000 ke upar ka maal ho to bill chahiye for the claim").
+                'invoice_required' => $this->parcel->declared_value_paise > Parcel::INVOICE_REQUIRED_ABOVE_PAISE,
+                'invoice_photos' => $this->parcel->relationLoaded('images')
+                    ? $this->parcel->images
+                        ->where('type', ParcelImage::TYPE_INVOICE)
+                        ->map(fn ($image) => url(Storage::disk('public')->url($image->storage_path)))
+                        ->values()
                     : [],
             ]),
+            'door_pickup' => (bool) $this->door_pickup,
+            'door_pickup_fee_paise' => $this->door_pickup_fee_paise,
             'price_breakdown' => $this->price_breakdown,
             'total_amount_paise' => $this->total_amount_paise,
             'currency' => $this->currency,
@@ -92,6 +111,12 @@ class OrderResource extends JsonResource
                     'provider_order_id' => $payment->provider_order_id,
                     'amount_paise' => $payment->amount_paise,
                     'status' => $payment->status,
+                    // Publishable key only (never the secret) — the client needs this to
+                    // open Razorpay Checkout itself. Null for the mock driver, where the
+                    // app just shows its own "Pay"/"Simulate failure" test buttons.
+                    'razorpay_key_id' => $payment->provider === 'razorpay'
+                        ? config('services.razorpay.key_id')
+                        : null,
                 ];
             }),
             // Shown to the booking customer only (this resource is always

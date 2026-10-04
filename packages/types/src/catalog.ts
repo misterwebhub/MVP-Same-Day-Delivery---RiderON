@@ -46,13 +46,12 @@ export interface RouteScheduleAvailability {
 }
 
 /** backend/config/pricing.php weight_slab_grams keys, mirrors Parcel::WEIGHT_* constants. */
-export type WeightSlab = 'upto_1kg' | '1_3kg' | '3_5kg' | '5_10kg';
+export type WeightSlab = 'upto_100g' | 'upto_1kg' | 'upto_2kg';
 
 export const WEIGHT_SLAB_LABELS: Record<WeightSlab, string> = {
-  upto_1kg: 'Up to 1 kg',
-  '1_3kg': '1 – 3 kg',
-  '3_5kg': '3 – 5 kg',
-  '5_10kg': '5 – 10 kg',
+  upto_100g: 'Up to 100 g',
+  upto_1kg: '101 g – 1 kg',
+  upto_2kg: '1.1 – 2 kg',
 };
 
 /** Parcel::TYPE_* constants. */
@@ -67,6 +66,12 @@ export const PARCEL_TYPE_LABELS: Record<ParcelType, string> = {
   other: 'Other',
 };
 
+/** Mirrors backend Parcel::INVOICE_REQUIRED_ABOVE_PAISE — above this declared
+ * value a bill/invoice photo is required for the claim. Used client-side only
+ * to gate the UI; the backend is the source of truth (OrderResource exposes
+ * parcel.invoice_required computed from the same constant). */
+export const INVOICE_REQUIRED_ABOVE_PAISE = 100000;
+
 export interface QuotePayload {
   route_id: number;
   route_schedule_id: number;
@@ -74,6 +79,7 @@ export interface QuotePayload {
   quantity: number;
   declared_value_paise: number;
   coupon_code?: string | null;
+  door_pickup?: boolean;
 }
 
 export interface PriceBreakdownLine {

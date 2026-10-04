@@ -13,7 +13,11 @@ export interface ManualAddressCapture {
   text: string;
   latitude: number | null;
   longitude: number | null;
+  postalCode: string | null;
 }
+
+/** India Post PIN codes are exactly 6 digits, first digit 1-9. */
+const PINCODE_PATTERN = /^[1-9][0-9]{5}$/;
 
 interface Section {
   title: string;
@@ -106,6 +110,8 @@ export function StationPickerModal({
     setLocateFailed(false);
   };
 
+  const pincodeValid = addressPostalCode !== null && PINCODE_PATTERN.test(addressPostalCode.trim());
+
   const onPressStation = (station: StationOption) => {
     const isManualAddressCity = manualAddressCities.some((city) => city.toLowerCase() === station.city.name.trim().toLowerCase());
     if (isManualAddressCity && onAddressCapture) {
@@ -115,13 +121,18 @@ export function StationPickerModal({
     // Non-opted-in city (or no capture handler wired) — clear any stale
     // address from a previous selection and confirm the station immediately,
     // same behavior as before this feature existed.
-    onAddressCapture?.({ text: '', latitude: null, longitude: null });
+    onAddressCapture?.({ text: '', latitude: null, longitude: null, postalCode: null });
     onSelect(station);
   };
 
   const onConfirmAddress = () => {
-    if (!pendingStation) return;
-    onAddressCapture?.({ text: addressText.trim(), latitude: addressLatitude, longitude: addressLongitude });
+    if (!pendingStation || !pincodeValid) return;
+    onAddressCapture?.({
+      text: addressText.trim(),
+      latitude: addressLatitude,
+      longitude: addressLongitude,
+      postalCode: addressPostalCode!.trim(),
+    });
     onSelect(pendingStation);
     resetAddressState();
   };
@@ -187,7 +198,7 @@ export function StationPickerModal({
           <View style={styles.addressStep}>
             <Text style={styles.addressStepStation}>{pendingStation.name}</Text>
             <Text style={styles.addressStepHint}>
-              Optional — so the rider knows exactly where to {allowCurrentLocation ? 'come' : 'deliver'}.
+              Tell us exactly where to {allowCurrentLocation ? 'come' : 'deliver'} — pincode is required, address helps the rider.
             </Text>
 
             {allowCurrentLocation ? (
@@ -240,13 +251,29 @@ export function StationPickerModal({
                 originBias={addressLatitude !== null && addressLongitude !== null
                   ? { latitude: addressLatitude, longitude: addressLongitude }
                   : { latitude: Number(pendingStation.latitude), longitude: Number(pendingStation.longitude) }}
-                placeholder="Search or type House / street / area / pincode"
+                placeholder="Search or type House / street / area"
                 multiline
               />
             </View>
+
+            <View style={styles.pincodeField}>
+              <Text style={styles.pincodeLabel}>Pincode *</Text>
+              <TextInput
+                style={[styles.pincodeInput, addressPostalCode && !pincodeValid && styles.pincodeInputError]}
+                value={addressPostalCode ?? ''}
+                onChangeText={(text) => setAddressPostalCode(text.replace(/[^0-9]/g, '').slice(0, 6))}
+                placeholder="6-digit pincode"
+                placeholderTextColor={color.textSecondary}
+                keyboardType="number-pad"
+                maxLength={6}
+              />
+              {addressPostalCode && !pincodeValid ? (
+                <Text style={styles.pincodeError}>Enter a valid 6-digit pincode.</Text>
+              ) : null}
+            </View>
           </View>
           <View style={styles.addressFooter}>
-            <Button title="Continue" onPress={onConfirmAddress} />
+            <Button title="Continue" onPress={onConfirmAddress} disabled={!pincodeValid} />
           </View>
         </SafeAreaView>
       </Modal>
@@ -457,6 +484,31 @@ const styles = StyleSheet.create({
   },
   addressField: {
     marginBottom: space[4],
+  },
+  pincodeField: {
+    marginBottom: space[4],
+  },
+  pincodeLabel: {
+    ...typography.caption,
+    color: color.textSecondary,
+    marginBottom: space[1],
+  },
+  pincodeInput: {
+    ...typography.body,
+    color: color.textPrimary,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.md,
+    paddingHorizontal: space[4],
+    height: 46,
+  },
+  pincodeInputError: {
+    borderColor: color.error,
+  },
+  pincodeError: {
+    ...typography.caption,
+    color: color.error,
+    marginTop: space[1],
   },
   locateCard: {
     flexDirection: 'row',

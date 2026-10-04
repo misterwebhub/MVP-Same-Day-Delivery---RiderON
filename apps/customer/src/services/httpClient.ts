@@ -22,12 +22,14 @@ const DEFAULT_BASE_URLS = {
 
 type AppEnv = keyof typeof DEFAULT_BASE_URLS;
 
-/** `__DEV__` is Expo/Metro's dev-vs-release flag, true for `expo start` /
- * Expo Go, false for a built release binary — matches how the two hosted
- * backends are meant to be split (devrideron for daily dev, rideron for
- * shipped builds). */
+/** Always pinned to the live `rideron.impixoexports.com` backend — both in
+ * Expo dev (`__DEV__` true) and in built release binaries. The `devrideron`
+ * host above is kept only as a documented historical fallback key; nothing
+ * resolves to it anymore. To point at a local/LAN backend instead, use the
+ * `EXPO_PUBLIC_API_URL` override below rather than re-introducing the
+ * dev/prod split here. */
 function currentEnv(): AppEnv {
-  return __DEV__ ? 'development' : 'production';
+  return 'production';
 }
 
 const CACHE_KEY_PREFIX = 'rideron.remote_base_url.';

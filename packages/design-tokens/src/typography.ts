@@ -25,28 +25,28 @@ export interface TypographyStyle {
 export const typography = {
   display: {
     fontFamily: fontFamily.poppinsSemiBold,
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: 25,
+    lineHeight: 32,
   },
   h1: {
     fontFamily: fontFamily.poppinsSemiBold,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 19,
+    lineHeight: 25,
   },
   h2: {
     fontFamily: fontFamily.poppinsMedium,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 21,
   },
   body: {
     fontFamily: fontFamily.interRegular,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
   },
   bodyStrong: {
     fontFamily: fontFamily.interSemiBold,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
   },
   caption: {
     fontFamily: fontFamily.interRegular,

@@ -32,6 +32,7 @@ class ParcelPhotoController extends Controller
 
         $request->validate([
             'photo' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
+            'type' => ['nullable', 'string', 'in:'.ParcelImage::TYPE_PHOTO.','.ParcelImage::TYPE_INVOICE],
         ]);
 
         $order->loadMissing('parcel.images');
@@ -42,6 +43,7 @@ class ParcelPhotoController extends Controller
         ParcelImage::create([
             'parcel_id' => $order->parcel->id,
             'storage_path' => $path,
+            'type' => $request->input('type', ParcelImage::TYPE_PHOTO),
             'created_at' => now(),
         ]);
 

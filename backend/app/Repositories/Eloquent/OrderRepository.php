@@ -28,6 +28,13 @@ class OrderRepository extends SoftDeletableRepository implements OrderRepository
             $query->where('status', $filters['status']);
         }
 
+        // Powers the "Recheck Orders" admin tab — only orders a partner has
+        // actually been matched to (partner_id set), regardless of status,
+        // so ops can re-verify a rider's assigned workload for a given day.
+        if (! empty($filters['assigned_only'])) {
+            $query->whereNotNull('partner_id');
+        }
+
         if (! empty($filters['booking_date'])) {
             $query->whereDate('booking_date', $filters['booking_date']);
         }

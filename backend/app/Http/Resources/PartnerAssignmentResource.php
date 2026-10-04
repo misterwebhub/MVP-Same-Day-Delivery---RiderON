@@ -48,6 +48,7 @@ class PartnerAssignmentResource extends JsonResource
                 'text' => $this->pickup_address_text,
                 'latitude' => $this->pickup_latitude !== null ? (float) $this->pickup_latitude : null,
                 'longitude' => $this->pickup_longitude !== null ? (float) $this->pickup_longitude : null,
+                'postal_code' => $this->pickup_postal_code,
             ] : null,
             // Mirrors pickup_address above but for the delivery/destination
             // end (currently only opts in for Kanpur-as-destination) — lets
@@ -57,6 +58,7 @@ class PartnerAssignmentResource extends JsonResource
                 'text' => $this->delivery_address_text,
                 'latitude' => $this->delivery_latitude !== null ? (float) $this->delivery_latitude : null,
                 'longitude' => $this->delivery_longitude !== null ? (float) $this->delivery_longitude : null,
+                'postal_code' => $this->delivery_postal_code,
             ] : null,
             'receiver' => [
                 'name' => $this->receiver_name,

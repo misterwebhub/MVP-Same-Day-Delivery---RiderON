@@ -82,6 +82,18 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Stacked (label above value) for the manual pickup/delivery address, which
+ * can run to a full sentence and would get squeezed against SummaryRow's
+ * right edge otherwise. */
+function SummaryBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.block}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.blockValue}>{value}</Text>
+    </View>
+  );
+}
+
 /**
  * Order tracking/detail screen — status timeline, route/parcel/party details,
  * OTP status cards, and self-service cancel. Once a partner accepts (no more
@@ -289,7 +301,27 @@ export function OrderDetails({ route, navigation }: Props) {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Route</Text>
         <SummaryRow label="From" value={order.route?.origin_station?.name ?? '—'} />
+        {order.pickup_address?.text ? (
+          <SummaryBlock
+            label="Pickup address"
+            value={
+              order.pickup_address.postal_code
+                ? `${order.pickup_address.text} — ${order.pickup_address.postal_code}`
+                : order.pickup_address.text
+            }
+          />
+        ) : null}
         <SummaryRow label="To" value={order.route?.destination_station?.name ?? '—'} />
+        {order.delivery_address?.text ? (
+          <SummaryBlock
+            label="Delivery address"
+            value={
+              order.delivery_address.postal_code
+                ? `${order.delivery_address.text} — ${order.delivery_address.postal_code}`
+                : order.delivery_address.text
+            }
+          />
+        ) : null}
         <SummaryRow label="Pickup date" value={order.booking_date ? formatDateLabel(order.booking_date) : '—'} />
         <SummaryRow
           label="Time slot"
@@ -543,6 +575,15 @@ const styles = StyleSheet.create({
   rowValue: {
     ...typography.body,
     color: color.textPrimary,
+  },
+  block: {
+    paddingVertical: space[1],
+    paddingLeft: space[2],
+  },
+  blockValue: {
+    ...typography.body,
+    color: color.textPrimary,
+    marginTop: 2,
   },
   divider: {
     height: 1,

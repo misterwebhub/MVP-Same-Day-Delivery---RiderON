@@ -17,7 +17,10 @@
         default => 'M9 19V6l7 3.5V19M4 19h16M9 19l-5-2.5V9L9 6',
     };
 @endphp
-<div class="stat-card">
+@php
+    $tag = isset($href) ? 'a' : 'div';
+@endphp
+<{{ $tag }} @if(isset($href)) href="{{ $href }}" @endif class="stat-card{{ isset($href) ? ' stat-card-link' : '' }}">
     <span class="stat-icon {{ $palette['bg'] }} {{ $palette['icon'] }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="{{ $iconPath }}" />
@@ -27,4 +30,4 @@
         <p class="text-caption text-text-secondary">{{ $label }}</p>
         <p class="mt-0.5 text-h1 font-heading {{ $palette['text'] }}">{{ $value }}</p>
     </div>
-</div>
+</{{ $tag }}>

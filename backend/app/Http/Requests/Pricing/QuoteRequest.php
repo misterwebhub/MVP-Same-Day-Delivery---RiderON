@@ -21,6 +21,7 @@ class QuoteRequest extends FormRequest
             'quantity' => ['required', 'integer', 'min:1'],
             'declared_value_paise' => ['required', 'integer', 'min:0'],
             'coupon_code' => ['nullable', 'string', 'max:50'],
+            'door_pickup' => ['nullable', 'boolean'],
         ];
     }
 }
