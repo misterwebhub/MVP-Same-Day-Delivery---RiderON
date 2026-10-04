@@ -24,6 +24,7 @@ class Coupon extends Model
         'valid_from',
         'valid_until',
         'is_active',
+        'waives_door_pickup',
     ];
 
     protected function casts(): array
@@ -37,6 +38,7 @@ class Coupon extends Model
             'valid_from' => 'datetime',
             'valid_until' => 'datetime',
             'is_active' => 'boolean',
+            'waives_door_pickup' => 'boolean',
         ];
     }
 }

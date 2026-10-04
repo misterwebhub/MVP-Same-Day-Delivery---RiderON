@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { SavedContact } from '@rideron/types';
 import { ApiClientError } from '@rideron/api-client';
@@ -8,6 +8,7 @@ import { Button } from '../../../components/Button';
 import { Chip } from '../../../components/Chip';
 import { Icon } from '../../../components/Icon';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
 import { confirmAction } from '../../../utils/confirm';
 
 /** Real saved sender/receiver address book — GET/POST/DELETE /profile/saved-contacts.
@@ -16,6 +17,7 @@ import { confirmAction } from '../../../utils/confirm';
 export function SavedContacts() {
   const [contacts, setContacts] = useState<SavedContact[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -27,17 +29,22 @@ export function SavedContacts() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
-    setLoading(true);
     setError(null);
-    apiClient.profile
+    return apiClient.profile
       .listSavedContacts()
       .then(setContacts)
-      .catch((e) => setError(e instanceof ApiClientError ? e.message : 'Could not load saved addresses.'))
-      .finally(() => setLoading(false));
+      .catch((e) => setError(e instanceof ApiClientError ? e.message : 'Could not load saved addresses.'));
   }, []);
 
   useEffect(() => {
-    load();
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   }, [load]);
 
   const resetForm = () => {
@@ -96,11 +103,12 @@ export function SavedContacts() {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <FlatList
         data={contacts ?? []}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
         ListHeaderComponent={
           <View style={styles.header}>
             {!showForm ? (
@@ -161,7 +169,7 @@ export function SavedContacts() {
           </View>
         )}
       />
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

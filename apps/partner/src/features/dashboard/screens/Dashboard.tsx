@@ -9,9 +9,15 @@ import { apiClient } from '../../../services/httpClient';
 import { formatPaise } from '../../../utils/currency';
 import { todayYMD } from '../../../utils/date';
 import { isActiveDelivery, isPendingAccept, statusLabel } from '../../assignments/statusHelpers';
-import type { AppTabsParamList, RootStackParamList } from '../../../navigation/types';
+import type { RootStackParamList } from '../../../navigation/types';
 
-type Props = CompositeScreenProps<BottomTabScreenProps<AppTabsParamList, 'Dashboard'>, NativeStackScreenProps<RootStackParamList>>;
+/** Kept for reference but no longer wired into AppTabs (see navigation/AppTabs.tsx) —
+ * superseded by features/rides/screens/Rides.tsx's Unassigned/My Rides split per the
+ * nav-simplification request. Not deleted (same "don't remove functionality, just
+ * unlink" treatment as Earnings), so its param-list type is now self-contained
+ * instead of referencing the current AppTabsParamList (which dropped 'Dashboard'). */
+type LegacyDashboardTabParamList = { Dashboard: undefined };
+type Props = CompositeScreenProps<BottomTabScreenProps<LegacyDashboardTabParamList, 'Dashboard'>, NativeStackScreenProps<RootStackParamList>>;
 
 /** Today's assignments + earnings summary + "Active Delivery" card, per docs/06's Dashboard data section. */
 export function Dashboard({ navigation }: Props) {

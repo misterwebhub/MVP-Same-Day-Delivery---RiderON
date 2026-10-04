@@ -41,16 +41,30 @@ class AuthController extends Controller
             throw new AccountSuspendedException();
         }
 
-        $verification = $this->otpService->generate(
-            purpose: OtpVerification::PURPOSE_LOGIN,
-            phone: $phone,
-            orderId: null,
-            userId: $user->id,
-        );
+        // In dev/staging (SMS_DRIVER=mock) no real SMS goes out, so the plaintext
+        // OTP is echoed back in the response for local testing convenience — lets
+        // a dev on a physical device/Expo Go log in without tailing the Laravel
+        // log. Never happens when a real SMS provider is configured.
+        $isMockSms = config('services.sms_driver') === 'mock';
+
+        [$verification, $plainOtp] = $isMockSms
+            ? $this->otpService->generateWithPlainOtp(
+                purpose: OtpVerification::PURPOSE_LOGIN,
+                phone: $phone,
+                orderId: null,
+                userId: $user->id,
+            )
+            : [$this->otpService->generate(
+                purpose: OtpVerification::PURPOSE_LOGIN,
+                phone: $phone,
+                orderId: null,
+                userId: $user->id,
+            ), null];
 
         return $this->success([
             'phone' => $phone,
             'expires_at' => $verification->expires_at->toIso8601String(),
+            ...($isMockSms ? ['dev_otp' => $plainOtp] : []),
         ], 'OTP sent.');
     }
 

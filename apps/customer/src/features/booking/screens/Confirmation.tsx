@@ -5,21 +5,23 @@ import { color, space, typography } from '@rideron/design-tokens';
 import type { Order } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
 import { Button } from '../../../components/Button';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { OtpResendCard } from '../../orders/components/OtpResendCard';
 import type { BookingStackParamList } from '../../../navigation/types';
 
 type Props = NativeStackScreenProps<BookingStackParamList, 'Confirmation'>;
 
-/** Booking Confirmed screen — Booking ID + Pickup/Delivery OTP status, per docs/01. The
- * actual OTP digits are never returned by the API (OtpVerification.otp_hash is $hidden,
- * see backend/app/Models/OtpVerification.php) — they only reach the customer via SMS,
- * so this screen shows delivery status + a real resend action, not a fabricated code.
- * The OTP status cards themselves live in OtpResendCard (features/orders/components) so
- * they're shared with OrderDetails, which shows the same cards while tracking. */
+/** Booking Confirmed screen — Booking ID + Pickup/Delivery OTP cards, per docs/01. The
+ * backend now surfaces the live plaintext OTP directly (app/Http/Resources/OrderResource.php's
+ * pickup_otp/delivery_otp, backed by a short-lived display cache in App\Services\Otp\OtpService),
+ * so the codes show here immediately rather than relying solely on SMS delivery. The OTP
+ * cards themselves live in OtpResendCard (features/orders/components) so they're shared
+ * with OrderDetails, which shows the same cards while tracking. */
 export function Confirmation({ route, navigation }: Props) {
   const { orderId } = route.params;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   useEffect(() => {
     apiClient.orders
@@ -46,10 +48,23 @@ export function Confirmation({ route, navigation }: Props) {
         <Text style={styles.title}>Booking confirmed</Text>
         <Text style={styles.reference}>{order?.booking_reference ?? `#${orderId}`}</Text>
 
-        <OtpResendCard title="Pickup OTP" phone={order?.sender.phone ?? ''} orderId={orderId} purpose="pickup" />
-        <OtpResendCard title="Delivery OTP" phone={order?.receiver.phone ?? ''} orderId={orderId} purpose="delivery" />
+        <OtpResendCard
+          title="Your OTP"
+          hint="Read this out to the rider when they collect the parcel."
+          phone={order?.sender.phone ?? ''}
+          purpose="pickup"
+          otp={order?.pickup_otp}
+        />
+        <OtpResendCard
+          title="Receiver OTP"
+          hint="Share this with the receiver — they give it to the rider at delivery."
+          phone={order?.receiver.phone ?? ''}
+          purpose="delivery"
+          otp={order?.delivery_otp}
+          whatsappShareLabel="Share receiver OTP via WhatsApp"
+        />
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Track this order" onPress={goToTracking} />
         <Button title="Done" variant="secondary" onPress={done} style={styles.doneButton} />
       </View>

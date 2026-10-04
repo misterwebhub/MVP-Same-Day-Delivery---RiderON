@@ -31,6 +31,19 @@ class Parcel extends Model
 
     public const WEIGHT_5_10KG = '5_10kg';
 
+    // Current active slabs (config('pricing.weight_slab_grams')), capped at
+    // 2kg per product direction — WEIGHT_UPTO_1KG above is reused as-is.
+    public const WEIGHT_UPTO_100G = 'upto_100g';
+
+    public const WEIGHT_UPTO_2KG = 'upto_2kg';
+
+    /**
+     * Above this declared value, a bill/invoice image (ParcelImage::TYPE_INVOICE)
+     * is required before payment can proceed — per product direction: "1000 ke
+     * upar ka maal ho to bill chahiye for the claim".
+     */
+    public const INVOICE_REQUIRED_ABOVE_PAISE = 100000;
+
     protected $fillable = [
         'order_id',
         'parcel_type',

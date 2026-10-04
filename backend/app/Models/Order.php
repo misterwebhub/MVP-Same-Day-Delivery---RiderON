@@ -35,6 +35,16 @@ class Order extends Model
         'receiver_name',
         'receiver_phone',
         'receiver_landmark',
+        'pickup_address_text',
+        'pickup_latitude',
+        'pickup_longitude',
+        'pickup_postal_code',
+        'delivery_address_text',
+        'delivery_latitude',
+        'delivery_longitude',
+        'delivery_postal_code',
+        'door_pickup',
+        'door_pickup_fee_paise',
         'price_breakdown',
         'total_amount_paise',
         'currency',
@@ -44,6 +54,8 @@ class Order extends Model
         'cancelled_by',
         'arrived_destination_at',
         'waiting_deadline_at',
+        'pickup_proof_photo_path',
+        'delivery_proof_photo_path',
         'delivered_at',
         'completed_at',
         'idempotency_key',
@@ -53,6 +65,12 @@ class Order extends Model
     {
         return [
             'booking_date' => 'date',
+            'pickup_latitude' => 'decimal:7',
+            'pickup_longitude' => 'decimal:7',
+            'delivery_latitude' => 'decimal:7',
+            'delivery_longitude' => 'decimal:7',
+            'door_pickup' => 'boolean',
+            'door_pickup_fee_paise' => 'integer',
             'price_breakdown' => 'array',
             'total_amount_paise' => 'integer',
             'prohibited_items_declared_at' => 'datetime',
@@ -112,6 +130,11 @@ class Order extends Model
     public function otpVerifications(): HasMany
     {
         return $this->hasMany(OtpVerification::class);
+    }
+
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(OrderActivityLog::class);
     }
 
     public function supportTickets(): HasMany

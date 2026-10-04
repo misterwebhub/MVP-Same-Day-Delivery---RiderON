@@ -14,9 +14,11 @@ use App\Models\OrderStatusHistory;
 use App\Models\Parcel;
 use App\Models\Payment;
 use App\Models\ProhibitedItemsVersion;
+use App\Models\OrderActivityLog;
 use App\Models\Refund;
 use App\Models\Route;
 use App\Models\RouteSchedule;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Catalog\RouteScheduleAvailabilityService;
 use App\Services\Orders\BookingReferenceGenerator;
 use App\Services\Orders\OrderCancellationPolicy;
@@ -34,8 +36,12 @@ class OrderController extends Controller
         'route.originStation',
         'route.destinationStation',
         'routeSchedule',
-        'parcel',
+        'parcel.images',
         'payments',
+        'otpVerifications',
+        // Once a partner accepts (partner_id set), the customer app shows
+        // their name/phone/vehicle + the route they're carrying it on.
+        'partner.user',
     ];
 
     public function __construct(
@@ -45,6 +51,7 @@ class OrderController extends Controller
         private readonly OrderCancellationPolicy $cancellationPolicy,
         private readonly OrderStateMachine $stateMachine,
         private readonly PaymentGateway $paymentGateway,
+        private readonly ActivityLogger $activityLogger,
     ) {
     }
 
@@ -122,6 +129,15 @@ class OrderController extends Controller
             $this->processRefund($updated, $decision->refundPercentage);
         }
 
+        $this->activityLogger->log(
+            $updated,
+            OrderActivityLog::EVENT_ORDER_CANCELLED,
+            OrderActivityLog::ACTOR_CUSTOMER,
+            $request->user()->id,
+            $request,
+            metadata: ['reason' => $request->input('reason')],
+        );
+
         $updated->load(self::ORDER_RELATIONS);
 
         return $this->success(new OrderResource($updated), 'Order cancelled.');
@@ -134,6 +150,24 @@ class OrderController extends Controller
     {
         $bookingReference = $this->bookingReferenceGenerator->generate();
         $idempotencyKey = $request->header('Idempotency-Key');
+
+        $route->loadMissing(['originStation.city', 'destinationStation.city']);
+
+        [$pickupAddressText, $pickupLatitude, $pickupLongitude, $pickupPostalCode] = $this->resolveManualAddress(
+            $route->originStation?->city?->name,
+            $request->input('pickup_address_text'),
+            $request->input('pickup_latitude'),
+            $request->input('pickup_longitude'),
+            $request->input('pickup_postal_code'),
+        );
+
+        [$deliveryAddressText, $deliveryLatitude, $deliveryLongitude, $deliveryPostalCode] = $this->resolveManualAddress(
+            $route->destinationStation?->city?->name,
+            $request->input('delivery_address_text'),
+            $request->input('delivery_latitude'),
+            $request->input('delivery_longitude'),
+            $request->input('delivery_postal_code'),
+        );
 
         $order = Order::create([
             'booking_reference' => $bookingReference,
@@ -148,6 +182,16 @@ class OrderController extends Controller
             'receiver_name' => $request->string('receiver_name')->toString(),
             'receiver_phone' => $request->string('receiver_phone')->toString(),
             'receiver_landmark' => $request->input('receiver_landmark'),
+            'pickup_address_text' => $pickupAddressText,
+            'pickup_latitude' => $pickupLatitude,
+            'pickup_longitude' => $pickupLongitude,
+            'pickup_postal_code' => $pickupPostalCode,
+            'delivery_address_text' => $deliveryAddressText,
+            'delivery_latitude' => $deliveryLatitude,
+            'delivery_longitude' => $deliveryLongitude,
+            'delivery_postal_code' => $deliveryPostalCode,
+            'door_pickup' => $quote['door_pickup'] ?? false,
+            'door_pickup_fee_paise' => $quote['door_pickup_fee_paise'] ?? 0,
             'price_breakdown' => $quote['breakdown'],
             'total_amount_paise' => $quote['total_amount_paise'],
             'currency' => 'INR',
@@ -182,6 +226,14 @@ class OrderController extends Controller
 
         $order->forceFill(['prohibited_items_declared_at' => now()])->save();
 
+        $this->activityLogger->log(
+            $order,
+            OrderActivityLog::EVENT_ORDER_BOOKED,
+            OrderActivityLog::ACTOR_CUSTOMER,
+            $request->user()->id,
+            $request,
+        );
+
         $gatewayOrder = $this->paymentGateway->createOrder($quote['total_amount_paise'], 'INR', $bookingReference);
 
         Payment::create([
@@ -195,6 +247,38 @@ class OrderController extends Controller
         ]);
 
         return $order;
+    }
+
+    /**
+     * Manual address entry (pickup OR delivery) is only ever trusted/stored
+     * when the relevant end of the route (origin for pickup, destination for
+     * delivery) belongs to a city in config('parcel.manual_address_cities')
+     * (currently Kanpur). Anywhere else — even if the client submitted these
+     * fields — they're silently dropped, so the order falls back to the
+     * fixed station's own coordinates everywhere downstream (partner
+     * distance calc, maps link). See OrderController::resolveManualAddress().
+     *
+     * @return array{0: ?string, 1: ?float, 2: ?float, 3: ?string} [address_text, lat, lng, postal_code]
+     */
+    private function resolveManualAddress(?string $cityName, mixed $addressText, mixed $latitude, mixed $longitude, mixed $postalCode = null): array
+    {
+        $allowed = $cityName !== null && collect(config('parcel.manual_address_cities', []))
+            ->contains(fn ($city) => strcasecmp($city, $cityName) === 0);
+
+        if (! $allowed) {
+            return [null, null, null, null];
+        }
+
+        if ($addressText === null && $latitude === null && $longitude === null && $postalCode === null) {
+            return [null, null, null, null];
+        }
+
+        return [
+            $addressText !== null ? (string) $addressText : null,
+            $latitude !== null ? (float) $latitude : null,
+            $longitude !== null ? (float) $longitude : null,
+            $postalCode !== null ? (string) $postalCode : null,
+        ];
     }
 
     private function processRefund(Order $order, int $refundPercentage): void

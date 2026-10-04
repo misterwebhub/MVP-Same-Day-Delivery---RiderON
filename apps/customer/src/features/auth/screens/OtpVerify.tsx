@@ -4,6 +4,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, space, typography } from '@rideron/design-tokens';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { apiClient } from '../../../services/httpClient';
 import { useAuth } from '../../../hooks/useAuth';
 import { ApiClientError } from '@rideron/api-client';
@@ -23,6 +25,7 @@ export function OtpVerify({ route, navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -78,7 +81,7 @@ export function OtpVerify({ route, navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Verify your number</Text>
         <Text style={styles.subtitle}>Enter the {OTP_LENGTH}-digit code sent to +91 {phone}.</Text>
@@ -102,10 +105,10 @@ export function OtpVerify({ route, navigation }: Props) {
         {cooldown > 0 ? `Resend code in ${cooldown}s` : resending ? 'Sending...' : 'Resend code'}
       </Text>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Verify" onPress={onSubmit} loading={loading} disabled={otp.length !== OTP_LENGTH} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

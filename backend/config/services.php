@@ -64,6 +64,12 @@ return [
         'template_id' => env('MSG91_TEMPLATE_ID'),
     ],
 
+    'hanuotp' => [
+        'api_key' => env('HANUOTP_API_KEY'),
+        'base_url' => env('HANUOTP_BASE_URL', 'https://api.hanuotp.in/sms-otp.php'),
+        'template_id' => env('HANUOTP_TEMPLATE_ID', 'default'),
+    ],
+
     'fcm' => [
         'project_id' => env('FCM_PROJECT_ID'),
         'credentials_path' => env('FCM_CREDENTIALS_PATH'),
@@ -73,6 +79,23 @@ return [
         'sid' => env('EXOTEL_SID'),
         'token' => env('EXOTEL_TOKEN'),
         'caller_id' => env('EXOTEL_CALLER_ID'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Google Places
+    |--------------------------------------------------------------------------
+    |
+    | Used server-side by PlacesController to proxy Autocomplete/Details
+    | lookups for the customer app's manual address inputs. Kept server-side
+    | (rather than called directly from the app) because Google's Places
+    | Autocomplete/Details JSON endpoints don't send CORS headers, so a
+    | browser fetch from Expo web is blocked outright — this proxy also
+    | keeps the API key out of the client bundle.
+    |
+    */
+    'google_places' => [
+        'key' => env('GOOGLE_PLACES_API_KEY'),
     ],
 
 ];

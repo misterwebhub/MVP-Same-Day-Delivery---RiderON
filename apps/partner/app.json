@@ -7,9 +7,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "RiderON uses your location at pickup/delivery to timestamp proof of arrival for fraud prevention. Location is never tracked in the background."
+      }
     },
     "android": {
+      "package": "com.rideron.partner",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -22,7 +26,19 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RiderON uses your location at pickup/delivery to timestamp proof of arrival for fraud prevention. Location is never tracked in the background."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0E7C4A"
+        }
+      ]
     ]
   }
 }

@@ -52,6 +52,13 @@ export interface OrderParcelDetails {
   quantity: number;
   declared_value_paise: number;
   special_instructions: string | null;
+  /** Photos the customer attached at booking time — full URLs, empty array if none uploaded. */
+  photos: string[];
+  /** True once declared_value_paise crosses Parcel::INVOICE_REQUIRED_ABOVE_PAISE (₹1000) —
+   *  the app must gate payment on invoice_photos having at least one entry when true. */
+  invoice_required: boolean;
+  /** Bill/invoice photos — full URLs, empty array if none uploaded. */
+  invoice_photos: string[];
 }
 
 export interface OrderPaymentSummary {
@@ -60,6 +67,44 @@ export interface OrderPaymentSummary {
   provider_order_id: string;
   amount_paise: number;
   status: PaymentStatus;
+  /** Razorpay publishable key (never the secret) — present only when provider
+   * is 'razorpay', needed client-side to open Razorpay Checkout. Null for the
+   * mock driver. */
+  razorpay_key_id: string | null;
+}
+
+export type OrderOtpStatus = 'pending' | 'verified' | 'expired';
+
+export interface OrderOtpField {
+  status: OrderOtpStatus;
+  /**
+   * The live plaintext code, shown directly in the app so the sender can
+   * read it to the pickup rider (and relay the delivery code to the
+   * receiver themselves). Null whenever there's nothing safe/valid to
+   * show — already verified, expired, or the short-lived display cache
+   * on the backend has expired/missed (e.g. app opened long after the
+   * code was generated). Treat null as "not available right now, use
+   * resend" — never as an error.
+   */
+  code: string | null;
+  /** ISO 8601. */
+  expires_at: string | null;
+  resend_count: number;
+}
+
+/**
+ * Manual pickup OR delivery address, set only for the end of the route
+ * (origin for pickup, destination for delivery) that opted into free-text
+ * entry (currently Kanpur — see backend config('parcel.manual_address_cities')).
+ * Null everywhere else, meaning "use the fixed station's own address/coordinates"
+ * instead. `latitude`/`longitude` are the customer's device GPS at entry time —
+ * never geocoded from `text`.
+ */
+export interface OrderPickupAddress {
+  text: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  postal_code: string | null;
 }
 
 export interface Order {
@@ -83,16 +128,41 @@ export interface Order {
     arrival_time: string;
   };
 
+  /** Present once a partner has accepted (partner_id set); null before that
+   *  — no auto-assign, order sits in every eligible partner's Unassigned
+   *  tab until one accepts. No live GPS: partners travel the fixed
+   *  scheduled route above between stations, so there's no coordinate to
+   *  show beyond that route. */
+  partner?: {
+    name: string | null;
+    phone: string | null;
+    vehicle_type: string | null;
+    rating_avg: number | null;
+  } | null;
+
   sender: OrderPartyDetails;
   receiver: OrderPartyDetails;
 
+  pickup_address?: OrderPickupAddress | null;
+  delivery_address?: OrderPickupAddress | null;
+
   parcel?: OrderParcelDetails | null;
+
+  door_pickup: boolean;
+  door_pickup_fee_paise: number;
 
   price_breakdown: PriceBreakdownLine[];
   total_amount_paise: number;
   currency: string;
 
   payment?: OrderPaymentSummary | null;
+
+  pickup_otp?: OrderOtpField | null;
+  delivery_otp?: OrderOtpField | null;
+
+  /** Rider-captured proof-of-custody photos — full URLs, null until the rider uploads. */
+  pickup_proof_photo_url?: string | null;
+  delivery_proof_photo_url?: string | null;
 
   /** ISO 8601 or null. */
   cancelled_at: string | null;
@@ -112,6 +182,26 @@ export interface CreateOrderPayload {
   receiver_name: string;
   receiver_phone: string;
   receiver_landmark?: string | null;
+  /** Free-text pickup address — only honoured server-side when the resolved
+   *  route's origin station is in a manual-address city (currently Kanpur);
+   *  silently ignored otherwise. Send alongside pickup_latitude/longitude. */
+  pickup_address_text?: string | null;
+  /** Customer's device GPS (or Places Autocomplete result) captured when they entered the address above — required together with pickup_longitude if either is sent. */
+  pickup_latitude?: number | null;
+  pickup_longitude?: number | null;
+  /** Pincode captured alongside the pickup address (from Place Details/
+   *  reverse-geocode, or typed/edited by the customer) — same manual-address
+   *  city gating as the fields above. */
+  pickup_postal_code?: string | null;
+  /** Free-text delivery address — only honoured server-side when the resolved
+   *  route's destination station is in a manual-address city (currently Kanpur);
+   *  silently ignored otherwise. Send alongside delivery_latitude/longitude. */
+  delivery_address_text?: string | null;
+  /** Coordinate resolved via Places Autocomplete (or manually) for the address above — required together with delivery_longitude if either is sent. */
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
+  /** Mirrors pickup_postal_code above but for the delivery/destination side. */
+  delivery_postal_code?: string | null;
   parcel_type: ParcelType;
   special_instructions?: string | null;
   /** Must be true — user must accept the prohibited-items declaration. */
@@ -142,16 +232,16 @@ export interface PaymentStatusResponse {
   order_status: OrderStatus;
 }
 
-export interface ResendOrderOtpResponse {
-  /** ISO 8601. */
-  expires_at: string;
-  resend_count: number;
-}
-
 export interface VerifyOrderOtpPayload {
   otp: string;
 }
 
 export interface VerifyOrderOtpResponse {
   order_status: OrderStatus;
+}
+
+export interface RegenerateOrderOtpResponse {
+  purpose: 'pickup' | 'delivery';
+  /** ISO 8601. Deliberately no `code` field — the partner never sees the OTP value. */
+  expires_at: string;
 }

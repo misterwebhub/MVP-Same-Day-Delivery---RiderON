@@ -11,6 +11,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import { Button } from '../../../components/Button';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { storage } from '../../../services/storage';
 import type { AuthStackParamList } from '../../../navigation/types';
 
@@ -40,6 +41,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export function Onboarding({ navigation }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
+  const bottomPadding = useSafeBottomPadding(space[8]);
 
   const finish = async () => {
     await storage.setOnboardingSeen();
@@ -91,7 +93,7 @@ export function Onboarding({ navigation }: Props) {
         ))}
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title={index === SLIDES.length - 1 ? 'Get started' : 'Next'} onPress={goNext} />
       </View>
     </View>

@@ -4,6 +4,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, space, typography } from '@rideron/design-tokens';
 import { Button } from '../../../components/Button';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import { apiClient } from '../../../services/httpClient';
 import { ApiClientError } from '@rideron/api-client';
 import type { AuthStackParamList } from '../../../navigation/types';
@@ -17,6 +19,7 @@ export function Login({ navigation }: Props) {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
 
   const handlePhoneChange = (text: string) => {
     setPhone(text.replace(/[^0-9]/g, ''));
@@ -45,7 +48,7 @@ export function Login({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Enter your mobile number</Text>
         <Text style={styles.subtitle}>We'll send you a one-time code to verify it's you.</Text>
@@ -63,10 +66,10 @@ export function Login({ navigation }: Props) {
         autoFocus
       />
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
         <Button title="Send OTP" onPress={onSubmit} loading={loading} disabled={phone.length !== 10} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 

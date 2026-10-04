@@ -59,7 +59,7 @@ class PricingEngineTest extends TestCase
 
         $this->assertSame(24000, $quote->totalAmountPaise);
         $this->assertSame([
-            ['label' => 'Base Fare', 'amount_paise' => 20000],
+            ['label' => 'Shipment Cost', 'amount_paise' => 20000],
             ['label' => 'Weight Charge', 'amount_paise' => 4000],
         ], $quote->breakdown);
     }
@@ -187,7 +187,7 @@ class PricingEngineTest extends TestCase
         $quote = $this->engine->quote($this->baseInput());
 
         $this->assertSame(11800, $quote->totalAmountPaise);
-        $this->assertContains(['label' => 'Tax', 'amount_paise' => 1800], $quote->breakdown);
+        $this->assertContains(['label' => 'GST Tax', 'amount_paise' => 1800], $quote->breakdown);
     }
 
     public function test_computes_the_full_breakdown_with_every_rule_type_and_a_coupon(): void
@@ -231,12 +231,12 @@ class PricingEngineTest extends TestCase
 
         $this->assertSame(29382, $quote->totalAmountPaise);
         $this->assertSame([
-            ['label' => 'Base Fare', 'amount_paise' => 20000],
+            ['label' => 'Shipment Cost', 'amount_paise' => 20000],
             ['label' => 'Weight Charge', 'amount_paise' => 4000],
             ['label' => 'Peak Hour Surcharge', 'amount_paise' => 2400],
             ['label' => 'Coupon Discount', 'amount_paise' => -2000],
             ['label' => 'Platform Fee', 'amount_paise' => 500],
-            ['label' => 'Tax', 'amount_paise' => 4482],
+            ['label' => 'GST Tax', 'amount_paise' => 4482],
         ], $quote->breakdown);
     }
 

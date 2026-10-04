@@ -47,6 +47,11 @@ const styles = StyleSheet.create({
   },
   primary: {
     backgroundColor: color.primary,
+    shadowColor: color.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   secondary: {
     backgroundColor: color.surface,

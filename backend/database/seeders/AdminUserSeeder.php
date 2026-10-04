@@ -7,7 +7,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 /**
- * Dev/staging admin account for the Filament panel (Task #17). The seeded
+ * Dev/staging admin account for the /admin panel (Task #17). The seeded
  * password is a placeholder only — must be rotated before any shared or
  * production deployment.
  */

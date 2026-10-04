@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import { PARCEL_TYPE_LABELS, WEIGHT_SLAB_LABELS, type ParcelType, type WeightSlab } from '@rideron/types';
 import { Button } from '../../../components/Button';
 import { Chip } from '../../../components/Chip';
+import { Icon } from '../../../components/Icon';
 import { StepProgress } from '../../../components/StepProgress';
 import { TextField } from '../../../components/TextField';
+import { KeyboardSafeScreen } from '../../../components/KeyboardSafeScreen';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
+import { compressImageForUpload } from '../../../utils/imageCompression';
 import { useBookingDraft } from '../BookingDraftContext';
 import type { BookingStackParamList } from '../../../navigation/types';
 
@@ -25,10 +30,74 @@ export function ParcelDetails({ navigation }: Props) {
     draft.declaredValuePaise > 0 ? String(Math.round(draft.declaredValuePaise / 100)) : '',
   );
   const [specialInstructions, setSpecialInstructions] = useState(draft.specialInstructions);
+  const [photoUri, setPhotoUri] = useState<string | null>(draft.parcelPhotoUri);
   const [error, setError] = useState<string | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [compressing, setCompressing] = useState(false);
+  const bottomPadding = useSafeBottomPadding(space[6]);
+
+  /** A photo is required — it's what the rider matches against at pickup and
+   * gives support a real reference if a parcel is ever disputed. Offer both
+   * camera and library. Uses an in-app chooser rather than the native
+   * Alert.alert action-sheet API, since react-native-web doesn't implement
+   * Alert at all — Alert.alert() silently no-ops on web, which made "Add
+   * photo" appear completely broken there. */
+  const onAddPhoto = () => {
+    setPickerVisible(true);
+  };
+
+  /** Resizes+compresses the picked asset so it fits under the backend's 5 MB
+   * upload limit before it's stored in the draft — see imageCompression.ts.
+   * A raw camera/library asset (especially on modern phones) is routinely
+   * several MB, well past that limit, which otherwise surfaces at Confirm &
+   * Pay time as "The photo field must not be greater than 5120 kilobytes." */
+  const acceptAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    setCompressing(true);
+    try {
+      const compressedUri = await compressImageForUpload(asset.uri, asset.width);
+      setPhotoUri(compressedUri);
+      setError(null);
+    } catch {
+      // Compression failing (corrupt image, unsupported format) shouldn't block the
+      // flow entirely — fall back to the original asset; the backend's own size/type
+      // validation still applies and will surface a clear error if it's too large.
+      setPhotoUri(asset.uri);
+      setError(null);
+    } finally {
+      setCompressing(false);
+    }
+  };
+
+  const captureFromCamera = async () => {
+    setPickerVisible(false);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError('Camera permission needed — allow camera access to photograph your parcel.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.6 });
+    if (result.canceled || !result.assets?.[0]) return;
+    await acceptAsset(result.assets[0]);
+  };
+
+  const captureFromLibrary = async () => {
+    setPickerVisible(false);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo permission needed — allow photo library access to attach a parcel photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+    if (result.canceled || !result.assets?.[0]) return;
+    await acceptAsset(result.assets[0]);
+  };
 
   const onContinue = () => {
     const declaredRupees = Number(declaredValue);
+    if (compressing) {
+      setError('Still processing your photo — one moment.');
+      return;
+    }
     if (!weightSlab) {
       setError('Choose a weight range.');
       return;
@@ -41,6 +110,10 @@ export function ParcelDetails({ navigation }: Props) {
       setError('Enter the declared value of your parcel.');
       return;
     }
+    if (!photoUri) {
+      setError('Add a photo of your parcel — it’s required for pickup verification.');
+      return;
+    }
     setError(null);
     update({
       weightSlab,
@@ -48,12 +121,13 @@ export function ParcelDetails({ navigation }: Props) {
       quantity,
       declaredValuePaise: Math.round(declaredRupees * 100),
       specialInstructions,
+      parcelPhotoUri: photoUri,
     });
     navigation.navigate('ContactDetails');
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardSafeScreen style={styles.container}>
       <StepProgress current={2} total={6} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionLabel}>What are you sending?</Text>
@@ -100,6 +174,46 @@ export function ParcelDetails({ navigation }: Props) {
           />
         </View>
 
+        <Text style={styles.sectionLabel}>Photo of your parcel</Text>
+        <Text style={styles.photoHint}>Required — helps our rider confirm the right parcel at pickup.</Text>
+        {compressing ? (
+          <View style={styles.photoAddBox}>
+            <ActivityIndicator color={color.primary} />
+            <Text style={styles.photoAddText}>Processing photo…</Text>
+          </View>
+        ) : photoUri ? (
+          <TouchableOpacity style={styles.photoPreviewWrap} activeOpacity={0.85} onPress={onAddPhoto}>
+            <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+            <View style={styles.photoRetakeBadge}>
+              <Icon name="camera-outline" size={14} color={color.textInverse} />
+              <Text style={styles.photoRetakeText}>Retake</Text>
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.photoAddBox} activeOpacity={0.85} onPress={onAddPhoto}>
+            <Icon name="camera-outline" size={22} color={color.primary} />
+            <Text style={styles.photoAddText}>Add photo</Text>
+          </TouchableOpacity>
+        )}
+
+        {pickerVisible ? (
+          <View style={styles.photoPickerCard}>
+            <TouchableOpacity style={styles.photoPickerOption} activeOpacity={0.7} onPress={captureFromCamera}>
+              <Icon name="camera-outline" size={18} color={color.textPrimary} />
+              <Text style={styles.photoPickerOptionText}>Take photo</Text>
+            </TouchableOpacity>
+            <View style={styles.photoPickerDivider} />
+            <TouchableOpacity style={styles.photoPickerOption} activeOpacity={0.7} onPress={captureFromLibrary}>
+              <Icon name="images-outline" size={18} color={color.textPrimary} />
+              <Text style={styles.photoPickerOptionText}>Choose from library</Text>
+            </TouchableOpacity>
+            <View style={styles.photoPickerDivider} />
+            <TouchableOpacity style={styles.photoPickerOption} activeOpacity={0.7} onPress={() => setPickerVisible(false)}>
+              <Text style={[styles.photoPickerOptionText, styles.photoPickerCancelText]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={styles.field}>
           <TextField
             label="Special instructions (optional)"
@@ -114,10 +228,10 @@ export function ParcelDetails({ navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-      <View style={styles.footer}>
-        <Button title="Continue" onPress={onContinue} />
+      <View style={[styles.footer, { paddingBottom: bottomPadding }]}>
+        <Button title="Continue" onPress={onContinue} disabled={compressing} />
       </View>
-    </View>
+    </KeyboardSafeScreen>
   );
 }
 
@@ -169,6 +283,81 @@ const styles = StyleSheet.create({
   },
   field: {
     marginBottom: space[4],
+  },
+  photoHint: {
+    ...typography.caption,
+    color: color.textSecondary,
+    marginBottom: space[3],
+  },
+  photoAddBox: {
+    height: 96,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: color.primary,
+    backgroundColor: color.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: space[5],
+    gap: space[1],
+  },
+  photoAddText: {
+    ...typography.bodyStrong,
+    color: color.primary,
+  },
+  photoPreviewWrap: {
+    height: 160,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    marginBottom: space[5],
+    backgroundColor: color.border,
+  },
+  photoPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  photoRetakeBadge: {
+    position: 'absolute',
+    right: space[2],
+    bottom: space[2],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(10,27,61,0.75)',
+    borderRadius: radius.pill,
+    paddingHorizontal: space[3],
+    paddingVertical: space[1],
+  },
+  photoRetakeText: {
+    ...typography.caption,
+    color: color.textInverse,
+  },
+  photoPickerCard: {
+    backgroundColor: color.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.border,
+    marginTop: -space[3],
+    marginBottom: space[5],
+    overflow: 'hidden',
+  },
+  photoPickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[2],
+    paddingVertical: space[3],
+    paddingHorizontal: space[4],
+  },
+  photoPickerOptionText: {
+    ...typography.body,
+    color: color.textPrimary,
+  },
+  photoPickerCancelText: {
+    color: color.textSecondary,
+  },
+  photoPickerDivider: {
+    height: 1,
+    backgroundColor: color.border,
   },
   error: {
     ...typography.caption,

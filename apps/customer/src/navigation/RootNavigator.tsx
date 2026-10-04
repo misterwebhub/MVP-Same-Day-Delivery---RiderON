@@ -6,8 +6,11 @@ import { AppTabs } from './AppTabs';
 import { BookingStack } from './BookingStack';
 import { OrderDetails } from '../features/orders/screens/OrderDetails';
 import { BootSplash } from '../components/BootSplash';
+import { HomeButton } from '../components/HomeButton';
 import { useAuth } from '../hooks/useAuth';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import { linking } from './linking';
+import { navigationRef } from './navigationRef';
 import type { RootStackParamList } from './types';
 
 const Root = createNativeStackNavigator<RootStackParamList>();
@@ -22,8 +25,13 @@ const Root = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { status } = useAuth();
 
+  // Registers the device's Expo push token (once logged in) and wires
+  // notification-tap navigation — see hooks/usePushNotifications.ts. No-op
+  // while unauthenticated/loading.
+  usePushNotifications(status === 'authenticated');
+
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer linking={linking} ref={navigationRef}>
       <Root.Navigator screenOptions={{ headerShown: false }}>
         {status === 'loading' && <Root.Screen name="Loading" component={BootSplash} />}
         {status === 'unauthenticated' && <Root.Screen name="Auth" component={AuthStack} />}
@@ -31,7 +39,11 @@ export function RootNavigator() {
           <>
             <Root.Screen name="Tabs" component={AppTabs} />
             <Root.Screen name="Booking" component={BookingStack} options={{ presentation: 'modal' }} />
-            <Root.Screen name="OrderDetails" component={OrderDetails} options={{ headerShown: true, title: 'Order' }} />
+            <Root.Screen
+              name="OrderDetails"
+              component={OrderDetails}
+              options={{ headerShown: true, title: 'Order', headerRight: () => <HomeButton /> }}
+            />
           </>
         )}
       </Root.Navigator>

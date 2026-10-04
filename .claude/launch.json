@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "customer-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start", "--web", "--port", "19009"],
+      "cwd": "apps/customer",
+      "port": 19009
+    },
+    {
+      "name": "partner-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start", "--web", "--port", "19010"],
+      "cwd": "apps/partner",
+      "port": 19010
+    },
+    {
+      "name": "rideron-react",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "19011"],
+      "cwd": "rideron-react",
+      "port": 19011
+    }
+  ]
+}

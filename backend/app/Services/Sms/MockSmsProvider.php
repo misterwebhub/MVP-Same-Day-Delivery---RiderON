@@ -21,4 +21,9 @@ class MockSmsProvider implements SmsProvider
 
         return new SmsSendResult(true, 'mock_'.Str::random(12), null);
     }
+
+    public function sendOtp(string $toPhone, string $otp, string $purpose): SmsSendResult
+    {
+        return $this->send($toPhone, "Your RiderON {$purpose} OTP is {$otp}. Do not share it with anyone.");
+    }
 }

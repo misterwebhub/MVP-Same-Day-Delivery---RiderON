@@ -6,9 +6,11 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\OrderCallController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\OrderOtpController;
+use App\Http\Controllers\Api\V1\ParcelPhotoController;
 use App\Http\Controllers\Api\V1\PartnerAssignmentController;
 use App\Http\Controllers\Api\V1\PartnerEarningsController;
 use App\Http\Controllers\Api\V1\PaymentController;
+use App\Http\Controllers\Api\V1\PlacesController;
 use App\Http\Controllers\Api\V1\PricingController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ProhibitedItemController;
@@ -47,6 +49,16 @@ Route::prefix('v1')->group(function () {
 
     Route::get('prohibited-items', [ProhibitedItemController::class, 'index']);
 
+    // Server-side proxy for Google Places (see PlacesController docblock for
+    // why this can't just be called directly from the app on web). Throttled
+    // separately from the general API limiter since debounced keystroke
+    // searches can fire fairly often.
+    Route::middleware('throttle:60,1')->group(function () {
+        Route::get('places/autocomplete', [PlacesController::class, 'autocomplete']);
+        Route::get('places/details', [PlacesController::class, 'details']);
+        Route::get('places/reverse-geocode', [PlacesController::class, 'reverseGeocode']);
+    });
+
     Route::get('support/faq', [SupportFaqController::class, 'index']);
 
     Route::post('payments/webhook/razorpay', [PaymentController::class, 'webhook']);
@@ -74,8 +86,7 @@ Route::prefix('v1')->group(function () {
         Route::post('payments/{payment}/verify', [PaymentController::class, 'verify'])->middleware('idempotent');
         Route::get('payments/{payment}/status', [PaymentController::class, 'status']);
 
-        Route::post('orders/{order}/otp/{purpose}/resend', [OrderOtpController::class, 'resend'])
-            ->whereIn('purpose', ['pickup', 'delivery']);
+        Route::post('orders/{order}/parcel/photos', [ParcelPhotoController::class, 'store']);
 
         Route::middleware('role:partner')->group(function () {
             Route::post('orders/{order}/otp/{purpose}/verify', [OrderOtpController::class, 'verify'])
@@ -88,11 +99,16 @@ Route::prefix('v1')->group(function () {
 
             Route::prefix('partner/assignments')->group(function () {
                 Route::get('/', [PartnerAssignmentController::class, 'index']);
+                Route::get('unassigned', [PartnerAssignmentController::class, 'unassigned']);
                 Route::get('{order}', [PartnerAssignmentController::class, 'show']);
                 Route::post('{order}/accept', [PartnerAssignmentController::class, 'accept'])->middleware('idempotent');
                 Route::post('{order}/arrived-pickup', [PartnerAssignmentController::class, 'arrivedPickup']);
                 Route::post('{order}/start-transit', [PartnerAssignmentController::class, 'startTransit']);
                 Route::post('{order}/arrived-destination', [PartnerAssignmentController::class, 'arrivedDestination']);
+                Route::post('{order}/otp/{purpose}/regenerate', [PartnerAssignmentController::class, 'regenerateOtp'])
+                    ->whereIn('purpose', ['pickup', 'delivery']);
+                Route::post('{order}/pickup-photo', [PartnerAssignmentController::class, 'uploadPickupPhoto']);
+                Route::post('{order}/delivery-photo', [PartnerAssignmentController::class, 'uploadDeliveryPhoto']);
             });
         });
     });

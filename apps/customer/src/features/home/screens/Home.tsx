@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -10,6 +10,10 @@ import { formatPaise } from '../../../utils/currency';
 import { Card } from '../../../components/Card';
 import { Icon, IconName } from '../../../components/Icon';
 import { Logo } from '../../../components/Logo';
+import { useBookingDraft } from '../../booking/BookingDraftContext';
+import { useRouteResolution } from '../../booking/hooks/useRouteResolution';
+import { RouteFieldsCard } from '../../booking/components/RouteFieldsCard';
+import { RoutePreviewCard } from '../../booking/components/RoutePreviewCard';
 import type { AppTabsParamList, RootStackParamList } from '../../../navigation/types';
 
 type Props = CompositeScreenProps<
@@ -47,9 +51,41 @@ const WHY_CHOOSE: { icon: IconName; title: string; subtitle: string }[] = [
 ];
 
 export function Home({ navigation }: Props) {
+  const { draft, update } = useBookingDraft();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [popularRoutes, setPopularRoutes] = useState<RouteSummary[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  /** True only until the very first load resolves — separate from `refreshing`
+   * (which drives the pull-to-refresh spinner for subsequent reloads) so the
+   * initial page load shows a full loader instead of blank sections. */
+  const [loading, setLoading] = useState(true);
+
+  // Quick-pick From/To, right on Home — selecting both stations here resolves
+  // the route immediately and "Book Now" jumps straight to ParcelDetails,
+  // completely skipping the dedicated RouteSelect screen. If nothing (or only
+  // one side) is picked yet, Book Now still opens RouteSelect as a fallback,
+  // pre-filled with whatever was already chosen here.
+  const [quickOriginStation, setQuickOriginStation] = useState(draft.originStation);
+  const [quickOriginCity, setQuickOriginCity] = useState(draft.originCity);
+  const [quickDestinationStation, setQuickDestinationStation] = useState(draft.destinationStation);
+  const [quickDestinationCity, setQuickDestinationCity] = useState(draft.destinationCity);
+  const { route: quickRoute, resolving: quickResolving, error: quickError } = useRouteResolution(
+    quickOriginStation,
+    quickDestinationStation,
+  );
+
+  // Manual address, captured inline the moment a Kanpur station is tapped in
+  // RouteFieldsCard's station picker — kept as local draft state here (same
+  // draft-then-commit pattern as the station picks above) and only merged
+  // into the shared BookingDraftContext once the customer actually proceeds.
+  const [quickPickupAddressText, setQuickPickupAddressText] = useState(draft.pickupAddressText);
+  const [quickPickupLatitude, setQuickPickupLatitude] = useState(draft.pickupLatitude);
+  const [quickPickupLongitude, setQuickPickupLongitude] = useState(draft.pickupLongitude);
+  const [quickPickupPostalCode, setQuickPickupPostalCode] = useState(draft.pickupPostalCode);
+  const [quickDeliveryAddressText, setQuickDeliveryAddressText] = useState(draft.deliveryAddressText);
+  const [quickDeliveryLatitude, setQuickDeliveryLatitude] = useState(draft.deliveryLatitude);
+  const [quickDeliveryLongitude, setQuickDeliveryLongitude] = useState(draft.deliveryLongitude);
+  const [quickDeliveryPostalCode, setQuickDeliveryPostalCode] = useState(draft.deliveryPostalCode);
 
   const load = useCallback(async () => {
     const [ordersResult, routesResult] = await Promise.allSettled([
@@ -65,7 +101,7 @@ export function Home({ navigation }: Props) {
   }, []);
 
   useEffect(() => {
-    load();
+    load().finally(() => setLoading(false));
   }, [load]);
 
   const onRefresh = useCallback(async () => {
@@ -77,7 +113,31 @@ export function Home({ navigation }: Props) {
   const activeOrder = orders?.find((o) => ACTIVE_DELIVERY_STATUSES.includes(o.status));
   const recentOrders = orders?.slice(0, 3) ?? [];
 
-  const goToBooking = () => navigation.getParent()?.navigate('Booking');
+  /** Skips straight past RouteSelect when a route is already resolved from the
+   * quick-pick card above; otherwise falls back to the full RouteSelect screen
+   * (still pre-filled — its own local state seeds from the shared draft). */
+  const goToBooking = () => {
+    if (quickRoute && quickOriginCity && quickOriginStation && quickDestinationCity && quickDestinationStation) {
+      update({
+        originCity: quickOriginCity,
+        originStation: quickOriginStation,
+        destinationCity: quickDestinationCity,
+        destinationStation: quickDestinationStation,
+        route: quickRoute,
+        pickupAddressText: quickPickupAddressText,
+        pickupLatitude: quickPickupLatitude,
+        pickupLongitude: quickPickupLongitude,
+        pickupPostalCode: quickPickupPostalCode,
+        deliveryAddressText: quickDeliveryAddressText,
+        deliveryLatitude: quickDeliveryLatitude,
+        deliveryLongitude: quickDeliveryLongitude,
+        deliveryPostalCode: quickDeliveryPostalCode,
+      });
+      navigation.getParent()?.navigate('Booking', { screen: 'ParcelDetails' });
+      return;
+    }
+    navigation.getParent()?.navigate('Booking', { screen: 'RouteSelect' });
+  };
   const goToOrder = (orderId: number) => navigation.getParent()?.navigate('OrderDetails', { orderId });
   const goToOrders = () => navigation.navigate('Orders');
   const goToSupport = () => navigation.navigate('Support');
@@ -102,16 +162,32 @@ export function Home({ navigation }: Props) {
           <Icon name="menu" size={24} color={color.secondary} />
         </TouchableOpacity>
         <Logo size={26} variant="dark" />
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Open notifications"
-          style={styles.bell}
-          onPress={() => navigation.navigate('Profile', { screen: 'Notifications' })}
-          hitSlop={8}
-        >
-          <Icon name="notifications-outline" size={22} color={color.secondary} />
-          {(orders?.length ?? 0) > 0 && <View style={styles.bellBadge} />}
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Refresh page"
+            style={styles.bell}
+            onPress={onRefresh}
+            disabled={refreshing || loading}
+            hitSlop={8}
+          >
+            {refreshing ? (
+              <ActivityIndicator size="small" color={color.secondary} />
+            ) : (
+              <Icon name="refresh-outline" size={22} color={color.secondary} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Open notifications"
+            style={styles.bell}
+            onPress={() => navigation.navigate('Profile', { screen: 'Notifications' })}
+            hitSlop={8}
+          >
+            <Icon name="notifications-outline" size={22} color={color.secondary} />
+            {(orders?.length ?? 0) > 0 && <View style={styles.bellBadge} />}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -123,27 +199,59 @@ export function Home({ navigation }: Props) {
           <Text style={styles.bookingCardTitle}>Book Your Parcel</Text>
           <Text style={styles.bookingCardSubtitle}>Station to Station Delivery</Text>
 
-          <TouchableOpacity style={styles.bookingRow} onPress={goToBooking} activeOpacity={0.85}>
-            <View style={styles.bookingRowIcon}>
-              <Icon name="radio-button-on" size={16} color={color.primary} />
-            </View>
-            <Text style={styles.bookingRowText} numberOfLines={1}>
-              {activeOrder?.route?.origin_station?.name ?? popularRoutes?.[0]?.origin_station?.name ?? 'Choose pickup station'}
-            </Text>
-            <Icon name="chevron-forward" size={18} color={color.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bookingRow} onPress={goToBooking} activeOpacity={0.85}>
-            <View style={styles.bookingRowIcon}>
-              <Icon name="location" size={16} color={color.primary} />
-            </View>
-            <Text style={styles.bookingRowText} numberOfLines={1}>
-              {activeOrder?.route?.destination_station?.name ?? popularRoutes?.[0]?.destination_station?.name ?? 'Choose drop station'}
-            </Text>
-            <Icon name="chevron-forward" size={18} color={color.textSecondary} />
-          </TouchableOpacity>
+          <RouteFieldsCard
+            originStation={quickOriginStation}
+            destinationStation={quickDestinationStation}
+            pickupAddressText={quickPickupAddressText}
+            deliveryAddressText={quickDeliveryAddressText}
+            onSelectOrigin={(station) => {
+              setQuickOriginStation(station);
+              setQuickOriginCity(station.city);
+            }}
+            onSelectDestination={(station) => {
+              setQuickDestinationStation(station);
+              setQuickDestinationCity(station.city);
+            }}
+            onSwap={() => {
+              const os = quickOriginStation;
+              const oc = quickOriginCity;
+              setQuickOriginStation(quickDestinationStation);
+              setQuickOriginCity(quickDestinationCity);
+              setQuickDestinationStation(os);
+              setQuickDestinationCity(oc);
+              // Swap the sides' captured addresses too, so a Kanpur pickup
+              // address doesn't silently reappear as a Kanpur delivery
+              // address (or vice versa) after the stations flip.
+              const pat = quickPickupAddressText;
+              const plat = quickPickupLatitude;
+              const plng = quickPickupLongitude;
+              const ppc = quickPickupPostalCode;
+              setQuickPickupAddressText(quickDeliveryAddressText);
+              setQuickPickupLatitude(quickDeliveryLatitude);
+              setQuickPickupLongitude(quickDeliveryLongitude);
+              setQuickPickupPostalCode(quickDeliveryPostalCode);
+              setQuickDeliveryAddressText(pat);
+              setQuickDeliveryLatitude(plat);
+              setQuickDeliveryLongitude(plng);
+              setQuickDeliveryPostalCode(ppc);
+            }}
+            onPickupAddressCapture={(capture) => {
+              setQuickPickupAddressText(capture.text);
+              setQuickPickupLatitude(capture.latitude);
+              setQuickPickupLongitude(capture.longitude);
+              setQuickPickupPostalCode(capture.postalCode);
+            }}
+            onDeliveryAddressCapture={(capture) => {
+              setQuickDeliveryAddressText(capture.text);
+              setQuickDeliveryLatitude(capture.latitude);
+              setQuickDeliveryLongitude(capture.longitude);
+              setQuickDeliveryPostalCode(capture.postalCode);
+            }}
+          />
+          <RoutePreviewCard route={quickRoute} resolving={quickResolving} error={quickError} />
 
           <TouchableOpacity style={styles.bookNowButton} onPress={goToBooking} activeOpacity={0.85}>
-            <Text style={styles.bookNowText}>Book Now</Text>
+            <Text style={styles.bookNowText}>{quickRoute ? 'Book Now' : 'Choose Stations & Book'}</Text>
             <Icon name="arrow-forward" size={18} color={color.textInverse} />
           </TouchableOpacity>
         </Card>
@@ -186,7 +294,12 @@ export function Home({ navigation }: Props) {
           </View>
         </View>
 
-        {recentOrders.length > 0 ? (
+        {loading ? (
+          <View style={styles.loadingSection}>
+            <ActivityIndicator color={color.primary} />
+            <Text style={styles.loadingText}>Loading your bookings…</Text>
+          </View>
+        ) : recentOrders.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recent orders</Text>
             {recentOrders.map((order) => (
@@ -194,7 +307,8 @@ export function Home({ navigation }: Props) {
                 <View style={styles.orderRowText}>
                   <Text style={styles.orderRowRef}>{order.booking_reference}</Text>
                   <Text style={styles.orderRowRoute} numberOfLines={1}>
-                    {order.route?.origin_station?.name ?? '—'} → {order.route?.destination_station?.name ?? '—'}
+                    {order.pickup_address?.text ?? order.route?.origin_station?.name ?? '—'} →{' '}
+                    {order.delivery_address?.text ?? order.route?.destination_station?.name ?? '—'}
                   </Text>
                 </View>
                 <Text style={styles.orderRowAmount}>{formatPaise(order.total_amount_paise)}</Text>
@@ -215,7 +329,7 @@ export function Home({ navigation }: Props) {
           ))}
         </View>
 
-        {popularRoutes && popularRoutes.length > 0 ? (
+        {!loading && popularRoutes && popularRoutes.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Popular routes</Text>
             {popularRoutes.slice(0, 5).map((route) => (
@@ -267,6 +381,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: color.border,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space[4],
+  },
   bell: {
     position: 'relative',
   },
@@ -297,25 +416,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: color.textSecondary,
     marginBottom: space[4],
-  },
-  bookingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: color.border,
-    borderRadius: radius.md,
-    paddingHorizontal: space[3],
-    paddingVertical: space[3],
-    marginBottom: space[3],
-  },
-  bookingRowIcon: {
-    width: 28,
-    alignItems: 'center',
-  },
-  bookingRowText: {
-    ...typography.bodyStrong,
-    color: color.textPrimary,
-    flex: 1,
   },
   bookNowButton: {
     flexDirection: 'row',
@@ -416,6 +516,17 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: space[6],
+  },
+  loadingSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: space[6],
+    marginBottom: space[4],
+    gap: space[2],
+  },
+  loadingText: {
+    ...typography.caption,
+    color: color.textSecondary,
   },
   sectionTitle: {
     ...typography.h2,

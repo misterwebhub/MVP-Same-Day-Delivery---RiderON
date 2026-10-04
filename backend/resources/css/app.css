@@ -1,3 +1,153 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Font smoothing for crisper text rendering on the admin panel (the
+ * "much better smooth" font requirement) — standard cross-browser
+ * antialiasing hints, applied globally.
+ */
+@layer base {
+    html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+    }
+
+    body {
+        @apply bg-background text-text-primary font-sans antialiased;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        @apply font-heading;
+    }
+}
+
+@layer components {
+    .btn-primary {
+        @apply inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-body-strong text-text-inverse shadow-card transition-colors hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50;
+    }
+
+    .btn-secondary {
+        @apply inline-flex items-center justify-center rounded-md border border-border bg-surface px-4 py-2 text-body-strong text-text-primary transition-colors hover:bg-background focus:outline-none focus:ring-2 focus:ring-secondary/20;
+    }
+
+    .form-input {
+        @apply block w-full rounded-md border border-border bg-surface px-3 py-2 text-body text-text-primary placeholder:text-text-secondary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20;
+    }
+
+    .form-label {
+        @apply mb-1 block text-caption font-medium text-text-secondary;
+    }
+
+    .card {
+        @apply rounded-lg border border-border bg-surface p-5 shadow-card;
+    }
+
+    .badge {
+        @apply inline-flex items-center rounded-pill px-2.5 py-1 text-micro uppercase;
+    }
+
+    /* ---- Futuristic admin UI kit (design overhaul) ---- */
+
+    .nav-link {
+        @apply flex items-center gap-3 rounded-md px-3 py-2.5 text-body text-text-inverse/70 transition-all duration-150 hover:bg-white/10 hover:text-text-inverse;
+    }
+
+    .nav-link-active {
+        @apply bg-primary text-text-inverse shadow-card hover:bg-primary;
+    }
+
+    .nav-icon {
+        @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/5;
+    }
+
+    .page-header {
+        @apply mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between;
+    }
+
+    .page-title {
+        @apply text-h1 font-heading text-text-primary;
+    }
+
+    .page-subtitle {
+        @apply mt-1 text-body text-text-secondary;
+    }
+
+    .table-shell {
+        @apply overflow-hidden rounded-lg border border-border bg-surface shadow-card;
+    }
+
+    .table-shell table {
+        @apply w-full text-left;
+    }
+
+    .table-shell thead {
+        @apply bg-background;
+    }
+
+    .table-shell th {
+        @apply px-4 py-3 text-micro font-medium uppercase tracking-wide text-text-secondary;
+    }
+
+    .table-shell td {
+        @apply px-4 py-3 text-body text-text-primary;
+    }
+
+    .table-shell tbody tr {
+        @apply border-t border-border transition-colors hover:bg-background/70;
+    }
+
+    .filter-bar {
+        @apply mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface p-4 shadow-card;
+    }
+
+    .stat-card {
+        @apply relative flex items-center gap-4 overflow-hidden rounded-lg border border-border bg-surface p-5 shadow-card;
+    }
+
+    .stat-card-link {
+        @apply transition-colors hover:border-primary hover:shadow-md;
+    }
+
+    .stat-icon {
+        @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-h2;
+    }
+
+    .empty-state {
+        @apply flex flex-col items-center justify-center gap-2 py-12 text-center text-body text-text-secondary;
+    }
+
+    .timeline {
+        @apply relative space-y-0;
+    }
+
+    .timeline-item {
+        @apply relative flex gap-4 pb-6 last:pb-0;
+    }
+
+    .timeline-item::before {
+        content: '';
+        @apply absolute left-[15px] top-8 h-full w-px bg-border;
+    }
+
+    .timeline-item:last-child::before {
+        @apply hidden;
+    }
+
+    .timeline-dot {
+        @apply relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-4 ring-surface;
+    }
+
+    .action-card {
+        @apply card space-y-3 border-l-4;
+    }
+
+    .link-quiet {
+        @apply text-caption font-medium text-primary transition-colors hover:text-primary-dark hover:underline;
+    }
+
+    .chip {
+        @apply inline-flex items-center gap-1.5 rounded-pill border border-border bg-background px-3 py-1.5 text-caption text-text-secondary;
+    }
+}

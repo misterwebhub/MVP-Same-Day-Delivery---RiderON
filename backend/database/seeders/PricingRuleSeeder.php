@@ -28,12 +28,22 @@ class PricingRuleSeeder extends Seeder
             ],
         );
 
+        // 1-100g ₹99, 101g-1kg ₹149, 1.1-2kg ₹249 — GST (18%, see TAX rule
+        // below) is added on top of these by PricingEngine, not baked in.
         $weightSlabs = [
-            ['min' => 0, 'max' => 1000, 'amount_paise' => 8000],
-            ['min' => 1001, 'max' => 3000, 'amount_paise' => 15000],
-            ['min' => 3001, 'max' => 5000, 'amount_paise' => 22000],
-            ['min' => 5001, 'max' => 10000, 'amount_paise' => 35000],
+            ['min' => 0, 'max' => 100, 'amount_paise' => 9900],
+            ['min' => 101, 'max' => 1000, 'amount_paise' => 14900],
+            ['min' => 1001, 'max' => 2000, 'amount_paise' => 24900],
         ];
+
+        // Old 3-5kg/5-10kg slabs are gone now that weight_slab_grams caps at
+        // 2kg — deactivate rather than delete so historical orders that
+        // still reference them keep resolving correctly if ever re-quoted.
+        PricingRule::query()
+            ->where('route_id', null)
+            ->where('rule_type', PricingRule::TYPE_WEIGHT_SLAB)
+            ->where('max_weight_grams', '>', 2000)
+            ->update(['is_active' => false]);
 
         foreach ($weightSlabs as $slab) {
             PricingRule::query()->updateOrCreate(
@@ -65,7 +75,7 @@ class PricingRuleSeeder extends Seeder
         PricingRule::query()->updateOrCreate(
             ['route_id' => null, 'rule_type' => PricingRule::TYPE_TAX],
             [
-                'percentage' => 5.00,
+                'percentage' => 18.00,
                 'effective_from' => $effectiveFrom,
                 'effective_to' => null,
                 'is_active' => true,

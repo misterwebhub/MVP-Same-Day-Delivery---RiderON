@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { color, radius, space, typography } from '@rideron/design-tokens';
 import type { ProhibitedItem } from '@rideron/types';
 import { apiClient } from '../../../services/httpClient';
@@ -38,15 +38,27 @@ export function Legal() {
   const [section, setSection] = useState<Section>('terms');
   const [items, setItems] = useState<ProhibitedItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiClient.catalog
+  const load = useCallback(() => {
+    setItemsError(null);
+    return apiClient.catalog
       .getProhibitedItems()
       .then((result) => setItems(result.items))
-      .catch(() => setItemsError('Could not load the prohibited items list right now.'))
-      .finally(() => setItemsLoading(false));
+      .catch(() => setItemsError('Could not load the prohibited items list right now.'));
   }, []);
+
+  useEffect(() => {
+    setItemsLoading(true);
+    load().finally(() => setItemsLoading(false));
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   return (
     <View style={styles.container}>
@@ -63,7 +75,10 @@ export function Legal() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={color.primary} />}
+      >
         {section === 'terms' ? (
           <View>
             <Text style={styles.heading}>Terms & Conditions</Text>

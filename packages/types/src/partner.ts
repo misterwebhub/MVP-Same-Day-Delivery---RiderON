@@ -4,7 +4,7 @@
  * app/Http/Resources/PartnerAssignmentResource.php,
  * app/Http/Requests/Auth/PartnerLoginRequest.php.
  */
-import type { OrderStatus } from './order';
+import type { OrderStatus, OrderPickupAddress } from './order';
 import type { ParcelType, WeightSlab, Station } from './catalog';
 
 export interface PartnerLoginPayload {
@@ -31,6 +31,9 @@ export interface PartnerAssignmentParcel {
   /** True when declared_value_paise >= config('parcel.high_value_threshold_paise') — the raw amount is never exposed. */
   high_value: boolean;
   special_instructions: string | null;
+  /** Photos the customer attached at booking — the rider compares these against the
+   * physical parcel at pickup as a fraud check (does the parcel match what was declared). */
+  photos: string[];
 }
 
 export interface PartnerAssignment {
@@ -53,7 +56,25 @@ export interface PartnerAssignment {
   sender: PartnerAssignmentParty;
   receiver: PartnerAssignmentParty;
 
+  /** Real (unmasked) pickup coordinate + address text, set only when the
+   *  customer entered one manually (currently Kanpur-origin orders) —
+   *  unlike phone numbers this is never masked, the rider needs the actual
+   *  location to judge distance/navigate. Null everywhere else; fall back
+   *  to route.origin_station's own lat/lng in that case. */
+  pickup_address?: OrderPickupAddress | null;
+
+  /** Mirrors pickup_address above but for the delivery/destination end
+   *  (currently Kanpur-destination orders) — lets the rider navigate to the
+   *  real drop point instead of route.destination_station's fixed lat/lng
+   *  once the customer entered one manually. */
+  delivery_address?: OrderPickupAddress | null;
+
   parcel?: PartnerAssignmentParcel | null;
+
+  /** Whether the rider has already captured proof-of-custody photos — used to gate the
+   * OTP verify button client-side (backend also enforces this, see OrderOtpController). */
+  pickup_photo_uploaded: boolean;
+  delivery_photo_uploaded: boolean;
 
   /** ISO 8601 or null — set once ARRIVED_DESTINATION is reached; the receiver-wait deadline. */
   waiting_deadline_at: string | null;

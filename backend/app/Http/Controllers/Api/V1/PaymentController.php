@@ -5,21 +5,32 @@ namespace App\Http\Controllers\Api\V1;
 use App\Constants\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payments\VerifyPaymentRequest;
+use App\Models\OrderActivityLog;
 use App\Models\Payment;
 use App\Models\PaymentTransaction;
+use App\Services\Activity\ActivityLogger;
 use App\Services\Payments\PaymentConfirmationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
-    public function __construct(private readonly PaymentConfirmationService $confirmationService)
-    {
+    public function __construct(
+        private readonly PaymentConfirmationService $confirmationService,
+        private readonly ActivityLogger $activityLogger,
+    ) {
     }
 
     public function verify(VerifyPaymentRequest $request, Payment $payment): JsonResponse
     {
         abort_unless($payment->order->customer_id === $request->user()->id, 403);
+
+        $parcel = $payment->order->parcel;
+        abort_if(
+            $parcel === null || $parcel->images()->count() === 0,
+            422,
+            'Upload a photo of your parcel before completing payment.',
+        );
 
         $this->confirmationService->confirm(
             payment: $payment,
@@ -36,6 +47,15 @@ class PaymentController extends Controller
         );
 
         $payment->refresh()->load('order');
+
+        $this->activityLogger->log(
+            $payment->order,
+            OrderActivityLog::EVENT_PAYMENT_VERIFIED,
+            OrderActivityLog::ACTOR_CUSTOMER,
+            $request->user()->id,
+            $request,
+            metadata: ['payment_status' => $payment->status],
+        );
 
         return $this->success([
             'payment_status' => $payment->status,

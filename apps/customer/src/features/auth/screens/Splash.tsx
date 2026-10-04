@@ -5,6 +5,7 @@ import { color, space, typography } from '@rideron/design-tokens';
 import { storage } from '../../../services/storage';
 import { Logo } from '../../../components/Logo';
 import { Icon } from '../../../components/Icon';
+import { useSafeBottomPadding } from '../../../hooks/useSafeBottomPadding';
 import type { AuthStackParamList } from '../../../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Splash'>;
@@ -15,6 +16,8 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Splash'>;
  * a not-yet-authenticated user needs Onboarding or can go straight to Login.
  */
 export function Splash({ navigation }: Props) {
+  const bottomPadding = useSafeBottomPadding(space[8]);
+
   useEffect(() => {
     let cancelled = false;
     storage.getOnboardingSeen().then((seen) => {
@@ -50,7 +53,7 @@ export function Splash({ navigation }: Props) {
         </View>
       </View>
 
-      <Text style={styles.footer}>Delivering Trust, From Station to Station</Text>
+      <Text style={[styles.footer, { bottom: bottomPadding }]}>Delivering Trust, From Station to Station</Text>
     </View>
   );
 }

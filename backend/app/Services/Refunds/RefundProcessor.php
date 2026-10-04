@@ -9,7 +9,7 @@ use App\Services\PaymentGateway\PaymentGateway;
 use RuntimeException;
 
 /**
- * Admin-triggered refund path (Filament "Approve Refund" actions), separate
+ * Admin-triggered refund path (the admin panel's "Approve Refund" action), separate
  * from OrderController's self-service cancellation refund. Always calls the
  * real PaymentGateway interface (mock or Razorpay per env) — never fakes a
  * completed refund without the gateway call.

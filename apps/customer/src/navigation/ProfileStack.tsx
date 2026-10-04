@@ -6,6 +6,7 @@ import { SavedContacts } from '../features/profile/screens/SavedContacts';
 import { Notifications } from '../features/profile/screens/Notifications';
 import { Language } from '../features/profile/screens/Language';
 import { Legal } from '../features/profile/screens/Legal';
+import { HomeButton } from '../components/HomeButton';
 import type { ProfileStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -18,6 +19,7 @@ export function ProfileStack() {
         headerStyle: { backgroundColor: color.secondary },
         headerTintColor: color.textInverse,
         headerTitleStyle: { color: color.textInverse },
+        headerRight: () => <HomeButton tintColor={color.textInverse} />,
       }}
     >
       <Stack.Screen name="ProfileHome" component={ProfileHome} options={{ title: 'Profile' }} />
